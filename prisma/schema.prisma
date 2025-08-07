@@ -1,0 +1,385 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Пользователи и аутентификация
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  avatar_url    String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  
+  // Профиль пользователя
+  profile       Profile?
+  
+  // Торговые данные
+  trades        Trade[]
+  signals       Signal[]
+  portfolios    Portfolio[]
+  
+  // Новости и анализ
+  newsBookmarks NewsBookmark[]
+  analysisHistory AnalysisHistory[]
+  
+  // Уведомления
+  notifications Notification[]
+  
+  // Чат история
+  chatHistory   ChatHistory[]
+}
+
+model Profile {
+  id                String   @id @default(cuid())
+  user_id           String   @unique
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Торговые настройки
+  risk_tolerance    String   @default("medium") // low, medium, high
+  preferred_pairs   String[] @default([])
+  max_position_size Float    @default(100)
+  
+  // Уведомления
+  email_notifications Boolean @default(true)
+  telegram_notifications Boolean @default(false)
+  telegram_chat_id   String?
+  
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+// Новости и анализ
+model NewsEvent {
+  id                String   @id @default(cuid())
+  title             String
+  content           String
+  url               String
+  source            String
+  published_at      DateTime
+  category          String
+  
+  // Анализ влияния
+  influence_score   Float    @default(0)
+  market_impact     Float    @default(0)
+  sentiment_score   Float    @default(0)
+  urgency_score     Float    @default(0)
+  reach_score       Float    @default(0)
+  credibility_score Float    @default(0)
+  
+  // Метаданные
+  keywords          String[]
+  entities          String[]
+  summary           String?
+  is_important      Boolean  @default(false)
+  priority_level    Int      @default(1)
+  
+  // Связи
+  aiAnalysis        AiAnalysis[]
+  anomalies         EventAnomaly[]
+  marketReactions   MarketReaction[]
+  
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+model AiAnalysis {
+  id                String   @id @default(cuid())
+  news_event_id     String
+  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
+  
+  // Анализ ИИ
+  gpt_analysis      String?
+  gemini_analysis   String?
+  combined_analysis String?
+  confidence_score  Float    @default(0)
+  
+  // Классификация
+  news_type         String?  // regulation, technology, macro, crypto
+  impact_prediction String?  // bullish, bearish, neutral
+  affected_assets   String[]
+  
+  created_at        DateTime @default(now())
+}
+
+model EventAnomaly {
+  id                String   @id @default(cuid())
+  news_event_id     String
+  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
+  
+  // Тип аномалии
+  anomaly_type      String   // news_without_reaction, reaction_without_news, manipulation
+  description       String
+  severity_score    Float    @default(0)
+  
+  created_at        DateTime @default(now())
+}
+
+model MarketReaction {
+  id                String   @id @default(cuid())
+  news_event_id     String
+  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
+  
+  // Реакция рынка
+  symbol            String   // BTC, ETH, etc.
+  price_before      Float
+  price_after_1h    Float?
+  price_after_4h    Float?
+  price_after_24h   Float?
+  
+  // Анализ
+  reaction_type     String?  // pump, dump, neutral
+  volume_change     Float?
+  volatility_change Float?
+  
+  created_at        DateTime @default(now())
+}
+
+// Твиты влиятельных лиц
+model InfluentialTweet {
+  id                String   @id @default(cuid())
+  tweet_id          String   @unique
+  author            String
+  author_name       String?
+  text              String
+  created_at        DateTime
+  
+  // Анализ влияния
+  influence_score   Float    @default(0)
+  sentiment_score   Float    @default(0)
+  keyword_score     Float    @default(0)
+  engagement_score  Float    @default(0)
+  
+  // Метрики
+  retweet_count     Int      @default(0)
+  like_count        Int      @default(0)
+  reply_count       Int      @default(0)
+  quote_count       Int      @default(0)
+  
+  // Классификация
+  categories        String[]
+  keywords          String[]
+  
+  processed_at      DateTime @default(now())
+}
+
+// Торговые сигналы
+model Signal {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Параметры сигнала
+  symbol            String
+  side              String   // buy, sell
+  entry_price       Float
+  quantity          Float
+  leverage          Float?
+  
+  // Цели и стопы
+  tp1_price         Float?
+  tp2_price         Float?
+  sl_price          Float?
+  
+  // Статус
+  status            String   @default("pending") // pending, active, closed, cancelled
+  entry_time        DateTime?
+  exit_time         DateTime?
+  exit_price        Float?
+  
+  // Результаты
+  pnl               Float?
+  roi               Float?
+  exit_reason       String?  // tp1, tp2, sl, manual
+  
+  // Связи с новостями
+  related_news      String[] // IDs связанных новостей
+  
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+// Торговые сделки
+model Trade {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  signal_id         String?
+  
+  // Параметры сделки
+  symbol            String
+  side              String   // buy, sell
+  entry_price       Float
+  exit_price        Float?
+  quantity          Float
+  leverage          Float?
+  
+  // Временные метки
+  entry_time        DateTime
+  exit_time         DateTime?
+  
+  // Результаты
+  pnl               Float?
+  roi               Float?
+  fee               Float?
+  
+  // Статус
+  status            String   @default("open") // open, closed, cancelled
+  
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+// Портфолио
+model Portfolio {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Параметры портфолио
+  name              String
+  description       String?
+  initial_balance   Float
+  current_balance   Float
+  total_pnl         Float    @default(0)
+  total_roi         Float    @default(0)
+  
+  // Статистика
+  total_trades      Int      @default(0)
+  winning_trades    Int      @default(0)
+  losing_trades     Int      @default(0)
+  win_rate          Float    @default(0)
+  
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+// Стратегии
+model Strategy {
+  id                String   @id @default(cuid())
+  
+  // Параметры стратегии
+  name              String
+  description       String?
+  type              String   // news_based, technical, hybrid
+  
+  // Настройки
+  risk_per_trade    Float    @default(0.02) // 2% риска на сделку
+  max_positions     Int      @default(5)
+  min_news_score    Float    @default(0.7)
+  
+  // Статистика
+  total_signals     Int      @default(0)
+  successful_signals Int     @default(0)
+  success_rate      Float    @default(0)
+  
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+}
+
+// Уведомления
+model Notification {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Параметры уведомления
+  title             String
+  message           String
+  type              String   // signal, news, alert, system
+  
+  // Статус
+  is_read           Boolean  @default(false)
+  is_sent           Boolean  @default(false)
+  
+  // Метаданные
+  data              Json?    // Дополнительные данные
+  
+  created_at        DateTime @default(now())
+}
+
+// История анализа
+model AnalysisHistory {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Параметры анализа
+  symbol            String
+  analysis_type     String   // news, technical, sentiment
+  result            String
+  
+  // Рекомендации
+  recommendation    String   // buy, sell, hold
+  confidence_score  Float    @default(0)
+  
+  // Связи
+  related_news      String[] // IDs связанных новостей
+  
+  created_at        DateTime @default(now())
+}
+
+// Закладки новостей
+model NewsBookmark {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  news_event_id     String
+  
+  // Метаданные
+  notes             String?
+  
+  created_at        DateTime @default(now())
+}
+
+// Чат история
+model ChatHistory {
+  id                String   @id @default(cuid())
+  user_id           String
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  // Сообщения
+  message           String
+  is_user_message   Boolean  @default(true)
+  
+  // Контекст
+  context           Json?    // Дополнительный контекст
+  
+  created_at        DateTime @default(now())
+}
+
+// Рыночные данные
+model MarketData {
+  id                String   @id @default(cuid())
+  
+  // Параметры
+  symbol            String
+  price             Float
+  volume            Float
+  market_cap        Float?
+  
+  // Технические индикаторы
+  rsi               Float?
+  macd              Float?
+  bollinger_upper   Float?
+  bollinger_lower   Float?
+  
+  // Настроения
+  sentiment_score   Float    @default(0)
+  news_count        Int      @default(0)
+  positive_news     Int      @default(0)
+  negative_news     Int      @default(0)
+  
+  timestamp         DateTime @default(now())
+}
+
+// Индексы для оптимизации 

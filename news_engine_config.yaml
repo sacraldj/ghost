@@ -1,0 +1,152 @@
+# GHOST News Engine Configuration
+# Конфигурация для улучшенного News Engine
+
+database:
+  path: "ghost_news.db"
+  type: "sqlite"
+
+sources:
+  newsapi:
+    enabled: true
+    api_key: ""  # Добавьте ваш NewsAPI ключ
+    base_url: "https://newsapi.org/v2"
+    keywords: 
+      - "crypto"
+      - "bitcoin" 
+      - "ethereum"
+      - "blockchain"
+      - "defi"
+      - "nft"
+      - "binance"
+      - "coinbase"
+    interval: 60
+
+  twitter:
+    enabled: false  # Требует настройки Twitter API v2
+    bearer_token: ""
+    keywords:
+      - "#crypto"
+      - "#bitcoin"
+      - "#ethereum"
+      - "#defi"
+    interval: 30
+
+  cryptocompare:
+    enabled: true
+    api_key: ""  # Опционально
+    base_url: "https://min-api.cryptocompare.com/data"
+    interval: 120
+
+  regulatory:
+    enabled: true
+    sources:
+      - "SEC"
+      - "CFTC"
+      - "FED"
+    interval: 360  # Каждые 6 часов
+
+trust_scores:
+  # Официальные источники
+  "Reuters": 0.95
+  "Bloomberg": 0.90
+  "Associated Press": 0.92
+  "Financial Times": 0.88
+  
+  # Крипто-медиа
+  "CoinTelegraph": 0.75
+  "CoinDesk": 0.80
+  "CryptoNews": 0.65
+  "Decrypt": 0.70
+  
+  # Социальные сети
+  "elonmusk (Twitter)": 0.60
+  "VitalikButerin (Twitter)": 0.75
+  
+  # По умолчанию
+  "*": 0.50
+
+influence:
+  tweet:
+    weight_followers: 0.6
+    weight_retweets: 0.3
+    weight_likes: 0.1
+    min_followers: 1000
+  
+  news:
+    base_influence:
+      "Reuters": 0.9
+      "Bloomberg": 0.9
+      "Associated Press": 0.85
+      "Financial Times": 0.85
+      "CoinTelegraph": 0.7
+      "CoinDesk": 0.75
+      "CryptoNews": 0.6
+      "UnknownBlog": 0.4
+
+sentiment:
+  method: "vader"  # vader, textblob, custom
+  thresholds:
+    positive: 0.1
+    negative: -0.1
+    neutral: 0.05
+  
+  # Настройки для финансовых новостей
+  financial_keywords:
+    positive: ["bullish", "surge", "rally", "gain", "profit", "growth"]
+    negative: ["bearish", "crash", "drop", "loss", "decline", "sell-off"]
+
+urgency:
+  decay_hours: 24
+  instant_keywords:
+    - "BREAKING"
+    - "URGENT"
+    - "CRASH"
+    - "EXPLOSION"
+    - "HACK"
+    - "SECURITY"
+    - "REGULATION"
+    - "BAN"
+  
+  # Множители срочности для разных типов
+  multipliers:
+    regulatory: 1.5
+    breaking_news: 2.0
+    market_crash: 2.5
+
+processing:
+  batch_size: 50
+  max_retries: 3
+  timeout: 10
+  max_concurrent_requests: 5
+  
+  # Настройки для важных новостей
+  important_thresholds:
+    influence: 0.7
+    sentiment_abs: 0.5
+    urgency: 0.8
+    source_trust: 0.8
+
+# Настройки уведомлений
+notifications:
+  enabled: true
+  important_news: true
+  error_alerts: true
+  
+  # Каналы уведомлений
+  channels:
+    telegram: false
+    email: false
+    webhook: false
+
+# Настройки мониторинга
+monitoring:
+  health_check_interval: 60
+  log_level: "INFO"
+  metrics_enabled: true
+  
+  # Метрики для отслеживания
+  metrics:
+    - "news_count_per_hour"
+    - "average_sentiment"
+    - "important_news_count"
+    - "source_trust_distribution"
