@@ -80,7 +80,7 @@ function initCriticalDatabase() {
   })
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     // Инициализируем базу данных
     await initCriticalDatabase()
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     // Подключение к базе данных
     const db = new sqlite3.Database(DB_PATH)
     
-    return new Promise((resolve, reject) => {
+    return new Promise<NextResponse>((resolve, reject) => {
       let query = `
         SELECT 
           id, source_name, title, content, url, published_at,

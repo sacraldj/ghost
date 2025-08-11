@@ -15,11 +15,11 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'critical' // 'critical' или 'regular'
     const source = searchParams.get('source')
 
-    let query = supabase
+    let queryBuilder
 
     if (type === 'critical') {
       // Получаем критические новости из Supabase
-      query = query
+      queryBuilder = supabase
         .from('critical_news')
         .select('*')
         .gte('published_at', new Date(Date.now() - minutes * 60 * 1000).toISOString())
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         .limit(limit)
     } else {
       // Получаем обычные новости из Supabase
-      query = query
+      queryBuilder = supabase
         .from('news_items')
         .select('*')
         .gte('published_at', new Date(Date.now() - minutes * 60 * 1000).toISOString())
@@ -37,10 +37,10 @@ export async function GET(request: NextRequest) {
 
     // Фильтр по источнику если указан
     if (source) {
-      query = query.eq('source_name', source)
+      queryBuilder = queryBuilder.eq('source_name', source)
     }
 
-    const { data, error } = await query
+    const { data, error } = await queryBuilder
 
     if (error) {
       console.error('Supabase error:', error)

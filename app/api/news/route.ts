@@ -57,7 +57,7 @@ function initDatabase() {
       `)
       
       // Вставка тестовых данных если таблица пустая
-      db.get("SELECT COUNT(*) as count FROM news_items", (err, row) => {
+      db.get("SELECT COUNT(*) as count FROM news_items", (err, row: any) => {
         if (err) {
           reject(err)
           return
@@ -146,7 +146,7 @@ function initDatabase() {
   })
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     // Инициализируем базу данных
     await initDatabase()
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
     // Подключение к базе данных
     const db = new sqlite3.Database(DB_PATH)
     
-    return new Promise((resolve, reject) => {
+    return new Promise<NextResponse>((resolve, reject) => {
       let query = `
         SELECT 
           id, item_type, source_name, author, title, content,
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
       query += ' ORDER BY published_at DESC, priority_level DESC, influence DESC LIMIT ?'
       params.push(limit)
 
-      db.all(query, params, (err, rows) => {
+      db.all(query, params, (err, rows: any[]) => {
         if (err) {
           console.error('Database error:', err)
           resolve(NextResponse.json({ error: 'Database error' }, { status: 500 }))

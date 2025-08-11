@@ -31,6 +31,7 @@ interface TradingSignal {
 }
 
 interface ProcessedSignal {
+  id?: string
   original_signal_id: string
   source_channel: string
   trader_name: string
@@ -47,6 +48,7 @@ interface ProcessedSignal {
   risk_reward_ratio?: number
   trader_win_rate?: number
   trader_avg_roi?: number
+  processing_errors?: string[]
 }
 
 interface SignalsData {
@@ -346,9 +348,9 @@ export default function SignalsMonitor() {
                 <span className="text-gray-400">TP:</span>
                 <div className="text-green-400">
                   {'tp_levels' in signal ? (
-                    signal.tp_levels.length > 0 ? signal.tp_levels.map(tp => formatPrice(tp)).join(', ') : 'N/A'
+                    (signal as TradingSignal).tp_levels.length > 0 ? (signal as TradingSignal).tp_levels.map(tp => formatPrice(tp)).join(', ') : 'N/A'
                   ) : (
-                    [signal.tp1_price, signal.tp2_price].filter(Boolean).map(tp => formatPrice(tp)).join(', ') || 'N/A'
+                    [(signal as ProcessedSignal).tp1_price, (signal as ProcessedSignal).tp2_price].filter(Boolean).map(tp => formatPrice(tp!)).join(', ') || 'N/A'
                   )}
                 </div>
               </div>
@@ -357,7 +359,7 @@ export default function SignalsMonitor() {
               <div>
                 <span className="text-gray-400">SL:</span>
                 <div className="text-red-400">
-                  {'sl_level' in signal ? formatPrice(signal.sl_level) : formatPrice(signal.sl_price)}
+                  {'sl_level' in signal ? formatPrice((signal as TradingSignal).sl_level) : formatPrice((signal as ProcessedSignal).sl_price)}
                 </div>
               </div>
 
@@ -404,14 +406,14 @@ export default function SignalsMonitor() {
             )}
 
             {/* Errors */}
-            {((('validation_errors' in signal && signal.validation_errors) || 
-               ('processing_errors' in signal && signal.processing_errors)) && 
-              (signal.validation_errors?.length || signal.processing_errors?.length)) && (
+            {((('validation_errors' in signal && (signal as TradingSignal).validation_errors) || 
+               ('processing_errors' in signal && (signal as ProcessedSignal).processing_errors)) && 
+              ((signal as TradingSignal).validation_errors?.length || (signal as ProcessedSignal).processing_errors?.length)) && (
               <div className="mt-2 pt-2 border-t border-gray-600">
                 <div className="text-sm text-red-400">
                   <span className="font-medium">Errors:</span>
                   <ul className="mt-1 list-disc list-inside">
-                    {(signal.validation_errors || signal.processing_errors || []).map((error, i) => (
+                    {((signal as TradingSignal).validation_errors || (signal as ProcessedSignal).processing_errors || []).map((error, i) => (
                       <li key={i}>{error}</li>
                     ))}
                   </ul>
