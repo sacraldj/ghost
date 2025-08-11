@@ -1,14 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Инициализация Supabase клиента
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Force Node.js runtime
+export const runtime = 'nodejs'
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+// Безопасная инициализация Supabase клиента с fallback значениями
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
+
+// Создаем клиент только если переменные заданы правильно
+let supabase: any = null
+if (supabaseUrl !== 'https://placeholder.supabase.co' && supabaseKey !== 'placeholder-key') {
+  supabase = createClient(supabaseUrl, supabaseKey)
+}
 
 export async function GET(request: NextRequest) {
   try {
+    // Проверяем, что Supabase инициализирован
+    if (!supabase) {
+      return NextResponse.json({ 
+        error: 'Supabase not configured',
+        message: 'Environment variables not set',
+        trades: []
+      }, { status: 503 })
+    }
+
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50')
     const days = parseInt(searchParams.get('days') || '7')
