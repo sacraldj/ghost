@@ -1,0 +1,242 @@
+# GHOST Signal Processor Configuration
+# Конфигурация обработчика торговых сигналов
+
+# Настройки Redis
+redis:
+  url: redis://localhost:6379/1
+  input_queue: "ghost:signals:new"      # Очередь входящих сигналов
+  output_queue: "ghost:signals:processed"  # Очередь обработанных сигналов
+  failed_queue: "ghost:signals:failed"  # Очередь неудачных сигналов
+  stats_key: "ghost:signal_processor:stats"
+
+# Настройки обработки
+processing:
+  batch_size: 10                    # Размер пачки для обработки
+  max_processing_time: 30           # Максимальное время обработки (секунды)
+  retry_attempts: 3                 # Количество повторных попыток
+  retry_delay: 5                    # Задержка между попытками (секунды)
+  concurrent_workers: 3             # Количество воркеров
+  queue_timeout: 5                  # Таймаут ожидания очереди
+
+# Управление рисками
+risk_management:
+  max_risk_percent: 2.0             # Максимальный риск на сделку (%)
+  default_balance: 1000.0           # Баланс по умолчанию (USDT)
+  min_risk_reward_ratio: 1.5        # Минимальное соотношение риск/прибыль
+  max_leverage: 50                  # Максимальное плечо
+  min_position_size: 10.0           # Минимальный размер позиции (USDT)
+  max_position_size: 1000.0         # Максимальный размер позиции (USDT)
+
+# Пороги качества
+quality_thresholds:
+  min_confidence: 0.6               # Минимальная уверенность
+  min_quality_score: 0.5            # Минимальный балл качества
+  min_trader_win_rate: 0.4          # Минимальный винрейт трейдера
+  min_signal_completeness: 0.7      # Минимальная полнота сигнала
+
+# Резолвинг символов
+symbol_resolution:
+  # Поддерживаемые символы
+  supported_symbols:
+    - "BTCUSDT"
+    - "ETHUSDT" 
+    - "BNBUSDT"
+    - "ADAUSDT"
+    - "SOLUSDT"
+    - "XRPUSDT"
+    - "DOTUSDT"
+    - "AVAXUSDT"
+    - "MATICUSDT"
+    - "LINKUSDT"
+    - "UNIUSDT"
+    - "LTCUSDT"
+    - "BCHUSDT"
+    - "XLMUSDT"
+    - "VETUSDT"
+    - "TRXUSDT"
+    - "EOSUSDT"
+    - "IOTAUSDT"
+    - "XMRUSDT"
+    - "DASHUSDT"
+  
+  # Маппинг символов
+  symbol_mapping:
+    # Bitcoin
+    "BTC/USDT": "BTCUSDT"
+    "BTC-USDT": "BTCUSDT"
+    "BITCOIN": "BTCUSDT"
+    "₿": "BTCUSDT"
+    
+    # Ethereum
+    "ETH/USDT": "ETHUSDT"
+    "ETH-USDT": "ETHUSDT"
+    "ETHEREUM": "ETHUSDT"
+    "⟠": "ETHUSDT"
+    
+    # Binance Coin
+    "BNB/USDT": "BNBUSDT"
+    "BNB-USDT": "BNBUSDT"
+    
+    # Cardano
+    "ADA/USDT": "ADAUSDT"
+    "ADA-USDT": "ADAUSDT"
+    "CARDANO": "ADAUSDT"
+    
+    # Solana
+    "SOL/USDT": "SOLUSDT"
+    "SOL-USDT": "SOLUSDT"
+    "SOLANA": "SOLUSDT"
+    
+    # Ripple
+    "XRP/USDT": "XRPUSDT"
+    "XRP-USDT": "XRPUSDT"
+    "RIPPLE": "XRPUSDT"
+  
+  # Заблокированные символы
+  blocked_symbols:
+    - "LUNAUSDT"
+    - "USTUSDT"
+
+# Фильтры сигналов
+signal_filters:
+  # Ценовые фильтры
+  price_filters:
+    min_price: 0.00001              # Минимальная цена
+    max_price: 1000000              # Максимальная цена
+    max_price_deviation: 10         # Макс отклонение от рыночной цены (%)
+  
+  # Фильтры уровней
+  level_filters:
+    min_tp_levels: 1                # Минимум TP уровней
+    max_tp_levels: 5                # Максимум TP уровней
+    min_entry_zone_size: 0.1        # Мин размер зоны входа (%)
+    max_entry_zone_size: 5.0        # Макс размер зоны входа (%)
+    min_sl_distance: 0.5            # Мин расстояние до SL (%)
+    max_sl_distance: 20.0           # Макс расстояние до SL (%)
+  
+  # Временные фильтры
+  time_filters:
+    max_signal_age: 300             # Максимальный возраст сигнала (секунды)
+    trading_hours_only: false       # Только в торговые часы
+    weekend_trading: true           # Торговля на выходных
+
+# Оценка качества сигнала
+quality_scoring:
+  # Веса компонентов качества
+  weights:
+    symbol_validity: 0.20           # Валидность символа
+    direction_clarity: 0.20         # Ясность направления
+    entry_definition: 0.15          # Определённость входа
+    tp_definition: 0.15             # Определённость TP
+    sl_definition: 0.10             # Определённость SL
+    risk_reward_ratio: 0.10         # Соотношение риск/прибыль
+    trader_reputation: 0.05         # Репутация трейдера
+    signal_confidence: 0.05         # Уверенность сигнала
+  
+  # Бонусы
+  bonuses:
+    multiple_tp_levels: 0.05        # Несколько TP уровней
+    leverage_specified: 0.02        # Указано плечо
+    risk_specified: 0.02            # Указан риск
+    market_analysis: 0.03           # Есть анализ рынка
+
+# Статистика трейдеров
+trader_stats:
+  # Отслеживаемые метрики
+  tracked_metrics:
+    - "win_rate"                    # Винрейт
+    - "avg_roi"                     # Средний ROI
+    - "signal_frequency"            # Частота сигналов
+    - "avg_holding_time"            # Среднее время удержания
+    - "max_drawdown"                # Максимальная просадка
+    - "sharpe_ratio"                # Коэффициент Шарпа
+  
+  # Настройки расчёта
+  calculation_period: 90            # Период расчёта (дни)
+  min_signals_for_stats: 10         # Мин количество сигналов для статистики
+  update_frequency: 3600            # Частота обновления (секунды)
+
+# Рыночные данные
+market_data:
+  # Источники данных
+  data_sources:
+    primary: "binance"              # Основной источник
+    fallback: "bybit"               # Резервный источник
+  
+  # Настройки кэширования
+  cache_ttl: 60                     # Время жизни кэша (секунды)
+  price_update_interval: 5          # Интервал обновления цен (секунды)
+  
+  # API конфигурация
+  api_rate_limits:
+    binance: 1200                   # Запросов в минуту
+    bybit: 600                      # Запросов в минуту
+
+# Уведомления
+notifications:
+  # Критические события
+  critical_events:
+    processing_errors: true
+    queue_overflow: true
+    redis_disconnection: true
+    invalid_symbol_rate_high: true
+  
+  # Статистические алерты
+  statistical_alerts:
+    low_quality_signals_rate: 50    # % некачественных сигналов
+    high_rejection_rate: 70         # % отклонённых сигналов
+    processing_delay_threshold: 60  # Задержка обработки (секунды)
+
+# Мониторинг и логирование
+monitoring:
+  health_check_interval: 30         # Интервал health check (секунды)
+  stats_update_interval: 60         # Интервал обновления статистики
+  metrics_retention_days: 30        # Срок хранения метрик
+  
+  # Экспорт метрик
+  metrics_export:
+    enabled: true
+    format: "prometheus"            # prometheus, json, csv
+    endpoint: "/metrics"
+    update_interval: 60
+
+# Логирование
+logging:
+  level: INFO
+  file: "logs/signal_processor.log"
+  max_size: 10485760               # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Логирование сигналов
+  log_signals:
+    all_signals: false             # Логировать все сигналы
+    processed_signals: true        # Логировать обработанные
+    rejected_signals: true         # Логировать отклонённые
+    failed_signals: true           # Логировать неудачные
+
+# Режимы работы
+modes:
+  # Разработка
+  development:
+    debug_logging: true
+    save_raw_signals: true
+    mock_market_data: true
+    reduced_quality_thresholds: true
+  
+  # Тестирование
+  testing:
+    dry_run: true
+    limited_symbols: true
+    enhanced_validation: true
+    test_data_injection: true
+  
+  # Продакшн
+  production:
+    strict_validation: true
+    performance_optimization: true
+    comprehensive_logging: false
+    error_reporting: true
+
+# Текущий режим
+current_mode: development

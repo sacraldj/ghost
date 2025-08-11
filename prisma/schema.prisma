@@ -10,376 +10,489 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Пользователи и аутентификация
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  avatar_url    String?
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  
-  // Профиль пользователя
-  profile       Profile?
-  
-  // Торговые данные
-  trades        Trade[]
-  signals       Signal[]
-  portfolios    Portfolio[]
-  
-  // Новости и анализ
-  newsBookmarks NewsBookmark[]
-  analysisHistory AnalysisHistory[]
-  
-  // Уведомления
-  notifications Notification[]
-  
-  // Чат история
-  chatHistory   ChatHistory[]
-}
-
+// Таблица профилей пользователей
 model Profile {
-  id                String   @id @default(cuid())
-  user_id           String   @unique
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  
-  // Торговые настройки
-  risk_tolerance    String   @default("medium") // low, medium, high
-  preferred_pairs   String[] @default([])
-  max_position_size Float    @default(100)
-  
-  // Уведомления
-  email_notifications Boolean @default(true)
-  telegram_notifications Boolean @default(false)
-  telegram_chat_id   String?
-  
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-}
-
-// Новости и анализ
-model NewsEvent {
-  id                String   @id @default(cuid())
-  title             String
-  content           String
-  url               String
-  source            String
-  published_at      DateTime
-  category          String
-  
-  // Анализ влияния
-  influence_score   Float    @default(0)
-  market_impact     Float    @default(0)
-  sentiment_score   Float    @default(0)
-  urgency_score     Float    @default(0)
-  reach_score       Float    @default(0)
-  credibility_score Float    @default(0)
-  
-  // Метаданные
-  keywords          String[]
-  entities          String[]
-  summary           String?
-  is_important      Boolean  @default(false)
-  priority_level    Int      @default(1)
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  role      String   @default("USER")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   
   // Связи
-  aiAnalysis        AiAnalysis[]
-  anomalies         EventAnomaly[]
-  marketReactions   MarketReaction[]
+  trades      Trade[]
+  chatHistory ChatHistory[]
   
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  @@map("profiles")
 }
 
-model AiAnalysis {
-  id                String   @id @default(cuid())
-  news_event_id     String
-  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
-  
-  // Анализ ИИ
-  gpt_analysis      String?
-  gemini_analysis   String?
-  combined_analysis String?
-  confidence_score  Float    @default(0)
-  
-  // Классификация
-  news_type         String?  // regulation, technology, macro, crypto
-  impact_prediction String?  // bullish, bearish, neutral
-  affected_assets   String[]
-  
-  created_at        DateTime @default(now())
-}
-
-model EventAnomaly {
-  id                String   @id @default(cuid())
-  news_event_id     String
-  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
-  
-  // Тип аномалии
-  anomaly_type      String   // news_without_reaction, reaction_without_news, manipulation
-  description       String
-  severity_score    Float    @default(0)
-  
-  created_at        DateTime @default(now())
-}
-
-model MarketReaction {
-  id                String   @id @default(cuid())
-  news_event_id     String
-  newsEvent         NewsEvent @relation(fields: [news_event_id], references: [id], onDelete: Cascade)
-  
-  // Реакция рынка
-  symbol            String   // BTC, ETH, etc.
-  price_before      Float
-  price_after_1h    Float?
-  price_after_4h    Float?
-  price_after_24h   Float?
-  
-  // Анализ
-  reaction_type     String?  // pump, dump, neutral
-  volume_change     Float?
-  volatility_change Float?
-  
-  created_at        DateTime @default(now())
-}
-
-// Твиты влиятельных лиц
-model InfluentialTweet {
-  id                String   @id @default(cuid())
-  tweet_id          String   @unique
-  author            String
-  author_name       String?
-  text              String
-  created_at        DateTime
-  
-  // Анализ влияния
-  influence_score   Float    @default(0)
-  sentiment_score   Float    @default(0)
-  keyword_score     Float    @default(0)
-  engagement_score  Float    @default(0)
-  
-  // Метрики
-  retweet_count     Int      @default(0)
-  like_count        Int      @default(0)
-  reply_count       Int      @default(0)
-  quote_count       Int      @default(0)
-  
-  // Классификация
-  categories        String[]
-  keywords          String[]
-  
-  processed_at      DateTime @default(now())
-}
-
-// Торговые сигналы
-model Signal {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  
-  // Параметры сигнала
-  symbol            String
-  side              String   // buy, sell
-  entry_price       Float
-  quantity          Float
-  leverage          Float?
-  
-  // Цели и стопы
-  tp1_price         Float?
-  tp2_price         Float?
-  sl_price          Float?
-  
-  // Статус
-  status            String   @default("pending") // pending, active, closed, cancelled
-  entry_time        DateTime?
-  exit_time         DateTime?
-  exit_price        Float?
-  
-  // Результаты
-  pnl               Float?
-  roi               Float?
-  exit_reason       String?  // tp1, tp2, sl, manual
-  
-  // Связи с новостями
-  related_news      String[] // IDs связанных новостей
-  
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-}
-
-// Торговые сделки
+// Расширенная таблица торговых сделок (на основе схемы от Дарэна)
 model Trade {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  signal_id         String?
+  // Основные идентификаторы
+  id       String @id
+  tradeId  String? @map("trade_id")
+  userId   String @map("user_id")
   
-  // Параметры сделки
-  symbol            String
-  side              String   // buy, sell
-  entry_price       Float
-  exit_price        Float?
-  quantity          Float
-  leverage          Float?
+  // Информация о сделке
+  symbol      String?
+  side        String? // LONG, SHORT
+  leverage    Int?
+  source      String?
+  sourceType  String? @map("source_type")
+  sourceName  String? @map("source_name")
+  sourceId    Int? @map("source_id")
+  
+  // Вход в позицию
+  entryZone       String? @map("entry_zone")
+  entryType       String? @map("entry_type")
+  entryExecPrice  Decimal? @map("entry_exec_price") @db.Decimal(20, 8)
+  entry           Decimal? @db.Decimal(20, 8)
+  fillType        String? @map("fill_type")
+  
+  // Целевые цены и стоп-лосс
+  tp1        Decimal? @db.Decimal(20, 8)
+  tp2        Decimal? @db.Decimal(20, 8)
+  tp3        Decimal? @db.Decimal(20, 8)
+  sl         Decimal? @db.Decimal(20, 8)
+  tp1Price   Decimal? @map("tp1_price") @db.Decimal(20, 8)
+  tp2Price   Decimal? @map("tp2_price") @db.Decimal(20, 8)
+  slPrice    Decimal? @map("sl_price") @db.Decimal(20, 8)
+  
+  // Автоматические расчеты
+  tp1AutoCalc Decimal? @map("tp1_auto_calc") @db.Decimal(20, 8)
+  slAutoCalc  Decimal? @map("sl_auto_calc") @db.Decimal(20, 8)
+  slType      String? @map("sl_type")
+  
+  // Реальные цены исполнения
+  realEntryPrice Decimal? @map("real_entry_price") @db.Decimal(20, 8)
+  positionQty    Decimal? @map("position_qty") @db.Decimal(20, 8)
+  marginUsd      Decimal? @map("margin_usd") @db.Decimal(20, 8)
+  
+  // Анализ и решения
+  verdictReason String? @map("verdict_reason")
+  signalReason  String? @map("signal_reason")
+  note          String?
+  gptComment    String? @map("gpt_comment")
   
   // Временные метки
-  entry_time        DateTime
-  exit_time         DateTime?
+  openedAt  DateTime? @map("opened_at")
+  exitTime  DateTime? @map("exit_time")
+  closedAt  DateTime? @map("closed_at")
   
-  // Результаты
-  pnl               Float?
-  roi               Float?
-  fee               Float?
+  // Расчеты и метрики
+  realLeverage        Decimal? @map("real_leverage") @db.Decimal(20, 8)
+  marginUsed          Decimal? @map("margin_used") @db.Decimal(20, 8)
+  entryMin            Decimal? @map("entry_min") @db.Decimal(20, 8)
+  entryMax            Decimal? @map("entry_max") @db.Decimal(20, 8)
+  avgEntryPrice       Decimal? @map("avg_entry_price") @db.Decimal(20, 8)
+  entryMethod         String? @map("entry_method")
+  riskPct             Decimal? @map("risk_pct") @db.Decimal(10, 4)
+  sourceLeverage      String? @map("source_leverage")
+  rawSymbol           String? @map("raw_symbol")
   
-  // Статус
-  status            String   @default("open") // open, closed, cancelled
+  // Цели и веса
+  targets       String?
+  tpWeights     String? @map("tp_weights")
+  originalText  String? @map("original_text")
   
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-}
-
-// Портфолио
-model Portfolio {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  // Выход из позиции
+  exitReason        String? @map("exit_reason")
+  roiPercent        Decimal? @map("roi_percent") @db.Decimal(10, 4)
+  verdict           String?
+  exitTriggerType   String? @map("exit_trigger_type")
+  exitTriggerValue  String? @map("exit_trigger_value")
+  ghostExitScore    Decimal? @map("ghost_exit_score") @db.Decimal(10, 4)
   
-  // Параметры портфолио
-  name              String
-  description       String?
-  initial_balance   Float
-  current_balance   Float
-  total_pnl         Float    @default(0)
-  total_roi         Float    @default(0)
+  // Исполнение ордеров
+  orderId        String? @map("order_id")
+  executionType  String? @map("execution_type")
+  fillStatus     String? @map("fill_status")
+  avgFillPrice   Decimal? @map("avg_fill_price") @db.Decimal(20, 8)
+  feeRate        Decimal? @map("fee_rate") @db.Decimal(10, 4)
+  feePaid        Decimal? @map("fee_paid") @db.Decimal(20, 8)
   
-  // Статистика
-  total_trades      Int      @default(0)
-  winning_trades    Int      @default(0)
-  losing_trades     Int      @default(0)
-  win_rate          Float    @default(0)
+  // Стратегия и консенсус
+  modelId           String? @map("model_id")
+  strategyVersion   String? @map("strategy_version")
+  strategyId        String? @map("strategy_id")
+  signalSequence    Int? @map("signal_sequence")
+  consensusScore    Decimal? @map("consensus_score") @db.Decimal(10, 4)
+  consensusSources  String? @map("consensus_sources")
+  status            String?
   
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-}
-
-// Стратегии
-model Strategy {
-  id                String   @id @default(cuid())
+  // P&L и ROI
+  realizedPnl   Decimal? @map("realized_pnl") @db.Decimal(20, 8)
+  exit          Decimal? @db.Decimal(20, 8)
+  finalized     Boolean @default(false)
+  roiPlanned    Decimal? @map("roi_planned") @db.Decimal(10, 4)
+  pnlGross      Decimal? @map("pnl_gross") @db.Decimal(20, 8)
+  pnlNet        Decimal? @map("pnl_net") @db.Decimal(20, 8)
+  roiGross      Decimal? @map("roi_gross") @db.Decimal(10, 4)
   
-  // Параметры стратегии
-  name              String
-  description       String?
-  type              String   // news_based, technical, hybrid
+  // Bybit данные
+  entryPriceBybit       Decimal? @map("entry_price_bybit") @db.Decimal(20, 8)
+  exitPriceBybit        Decimal? @map("exit_price_bybit") @db.Decimal(20, 8)
+  exitPriceFallback     Decimal? @map("exit_price_fallback") @db.Decimal(20, 8)
+  roiPercentBybit       Decimal? @map("roi_percent_bybit") @db.Decimal(10, 4)
+  roiEstimated          Decimal? @map("roi_estimated") @db.Decimal(10, 4)
   
-  // Настройки
-  risk_per_trade    Float    @default(0.02) // 2% риска на сделку
-  max_positions     Int      @default(5)
-  min_news_score    Float    @default(0.7)
+  // Проскальзывание и задержки
+  entrySlippage   Decimal? @map("entry_slippage") @db.Decimal(10, 4)
+  exitSlippage    Decimal? @map("exit_slippage") @db.Decimal(10, 4)
+  entryLatencyMs  Int? @map("entry_latency_ms")
+  exitLatencyMs   Int? @map("exit_latency_ms")
   
-  // Статистика
-  total_signals     Int      @default(0)
-  successful_signals Int     @default(0)
-  success_rate      Float    @default(0)
+  // Источники данных
+  dataSourceMode  String? @map("data_source_mode")
+  weekday         Int?
+  weekdayName     String? @map("weekday_name")
+  openedAtFull    String? @map("opened_at_full")
   
-  is_active         Boolean  @default(true)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-}
-
-// Уведомления
-model Notification {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  // Комиссии
+  bybitFeeOpen    Decimal? @map("bybit_fee_open") @db.Decimal(20, 8)
+  bybitFeeClose   Decimal? @map("bybit_fee_close") @db.Decimal(20, 8)
+  bybitFeeTotal   Decimal? @map("bybit_fee_total") @db.Decimal(20, 8)
+  bybitPnlNet     Decimal? @map("bybit_pnl_net") @db.Decimal(20, 8)
+  commissionOverRoi Decimal? @map("commission_over_roi") @db.Decimal(10, 4)
   
-  // Параметры уведомления
-  title             String
-  message           String
-  type              String   // signal, news, alert, system
+  // Анализ и флаги
+  lossType              String? @map("loss_type")
+  anomalyFlag           Boolean @default(false) @map("anomaly_flag")
+  bybitPnlNetApi        Decimal? @map("bybit_pnl_net_api") @db.Decimal(20, 8)
+  bybitPnlNetFallback   Decimal? @map("bybit_pnl_net_fallback") @db.Decimal(20, 8)
   
-  // Статус
-  is_read           Boolean  @default(false)
-  is_sent           Boolean  @default(false)
+  // ID ордеров
+  orderIdExit    String? @map("order_id_exit")
+  signalId       String? @map("signal_id")
+  tp1OrderId     String? @map("tp1_order_id")
+  tp2OrderId     String? @map("tp2_order_id")
+  slOrderId      String? @map("sl_order_id")
   
-  // Метаданные
-  data              Json?    // Дополнительные данные
+  // Управление стоп-лоссом
+  slBeMoved      Boolean @default(false) @map("sl_be_moved")
+  slBeMethod     String? @map("sl_be_method")
+  slBePrice      Decimal? @map("sl_be_price") @db.Decimal(20, 8)
+  slToBe         Int @default(0) @map("sl_to_be")
   
-  created_at        DateTime @default(now())
-}
-
-// История анализа
-model AnalysisHistory {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  // Восстановление TP2
+  tp2RestoreAttempted   Boolean @default(false) @map("tp2_restore_attempted")
+  tp2RestoreAttempts    Int @default(0) @map("tp2_restore_attempts")
+  tp2OrderIdCurrent     String? @map("tp2_order_id_current")
+  tp2OrderIdHistory     String? @map("tp2_order_id_history")
+  tp2ExitType           String? @map("tp2_exit_type")
   
-  // Параметры анализа
-  symbol            String
-  analysis_type     String   // news, technical, sentiment
-  result            String
+  // Текущие ID ордеров
+  slOrderIdCurrent      String? @map("sl_order_id_current")
+  slOrderIdHistory      String? @map("sl_order_id_history")
   
-  // Рекомендации
-  recommendation    String   // buy, sell, hold
-  confidence_score  Float    @default(0)
+  // P&L по целям
+  pnlTp1        Decimal? @map("pnl_tp1") @db.Decimal(20, 8)
+  pnlTp2        Decimal? @map("pnl_tp2") @db.Decimal(20, 8)
+  roiTp1        Decimal? @map("roi_tp1") @db.Decimal(10, 4)
+  roiTp2        Decimal? @map("roi_tp2") @db.Decimal(10, 4)
+  roiFinalReal  Decimal? @map("roi_final_real") @db.Decimal(10, 4)
+  pnlFinalReal  Decimal? @map("pnl_final_real") @db.Decimal(20, 8)
+  
+  // Прибыль по целям
+  profitTp1Real         Decimal? @map("profit_tp1_real") @db.Decimal(20, 8)
+  profitTp2Real         Decimal? @map("profit_tp2_real") @db.Decimal(20, 8)
+  expectedProfitTp1     Decimal? @map("expected_profit_tp1") @db.Decimal(20, 8)
+  expectedProfitTp2     Decimal? @map("expected_profit_tp2") @db.Decimal(20, 8)
+  expectedProfitTotal   Decimal? @map("expected_profit_total") @db.Decimal(20, 8)
+  
+  // Комиссии по целям
+  feeTp1        Decimal? @map("fee_tp1") @db.Decimal(20, 8)
+  feeTp2        Decimal? @map("fee_tp2") @db.Decimal(20, 8)
+  pnlTp1Net     Decimal? @map("pnl_tp1_net") @db.Decimal(20, 8)
+  pnlTp2Net     Decimal? @map("pnl_tp2_net") @db.Decimal(20, 8)
+  
+  // ROI по целям
+  roiTp1Real    Decimal? @map("roi_tp1_real") @db.Decimal(10, 4)
+  roiTp2Real    Decimal? @map("roi_tp2_real") @db.Decimal(10, 4)
+  roiSlReal     Decimal? @map("roi_sl_real") @db.Decimal(10, 4)
+  roiSlExpected Decimal? @map("roi_sl_expected") @db.Decimal(10, 4)
+  
+  // Время достижения целей
+  tp1HitTime    DateTime? @map("tp1_hit_time")
+  tp2HitTime    DateTime? @map("tp2_hit_time")
+  slHitTime     DateTime? @map("sl_hit_time")
+  
+  // Длительность
+  durationSec       Int? @map("duration_sec")
+  tp1DurationSec   Int? @map("tp1_duration_sec")
+  tp2DurationSec   Int? @map("tp2_duration_sec")
+  slDurationSec    Int? @map("sl_duration_sec")
+  
+  // Флаги достижения целей
+  tp1Hit       Boolean @default(false) @map("tp1_hit")
+  tp2Hit       Boolean @default(false) @map("tp2_hit")
+  slHit        Boolean @default(false) @map("sl_hit")
+  tpCountHit   Int @default(0) @map("tp_count_hit")
+  
+  // Ранний выход
+  earlyExit        Boolean @default(false) @map("early_exit")
+  earlyExitReason  String? @map("early_exit_reason")
+  exitExplanation  String? @map("exit_explanation")
+  exitAiScore      Decimal? @map("exit_ai_score") @db.Decimal(10, 4)
+  
+  // Ручное управление
+  manualExit       Int @default(0) @map("manual_exit")
+  manualExitType   String? @map("manual_exit_type")
+  
+  // Источники P&L
+  pnlSource    String? @map("pnl_source")
+  roiSource    String? @map("roi_source")
+  
+  // Fills данные
+  rawFillsCount    Int? @map("raw_fills_count")
+  fillsLegA        String? @map("fills_legA")
+  fillsLegB        String? @map("fills_legB")
+  fillsLegAVwap    Decimal? @map("fills_legA_vwap") @db.Decimal(20, 8)
+  fillsLegBVwap    Decimal? @map("fills_legB_vwap") @db.Decimal(20, 8)
+  fillsLegAQty     Decimal? @map("fills_legA_qty") @db.Decimal(20, 8)
+  fillsLegBQty     Decimal? @map("fills_legB_qty") @db.Decimal(20, 8)
+  fillsLegAFee     Decimal? @map("fills_legA_fee") @db.Decimal(20, 8)
+  fillsLegBFee     Decimal? @map("fills_legB_fee") @db.Decimal(20, 8)
+  fillsLegAFeeIn   Decimal? @map("fills_legA_fee_in") @db.Decimal(20, 8)
+  fillsLegBFeeIn   Decimal? @map("fills_legB_fee_in") @db.Decimal(20, 8)
+  
+  // Дополнительные поля
+  leverageUsedExpected Decimal? @map("leverage_used_expected") @db.Decimal(20, 8)
+  
+  // Дополнительные поля из схемы Дарэна
+  tpHit              String? @map("tp_hit")
+  exitDetail         String? @map("exit_detail")
+  roiUi              Decimal? @map("roi_ui") @db.Decimal(10, 4)
+  pnlNetInitial      Decimal? @map("pnl_net_initial") @db.Decimal(20, 8)
+  roiPercentInitial  Decimal? @map("roi_percent_initial") @db.Decimal(10, 4)
+  roiBybitStyle      Decimal? @map("roi_bybit_style") @db.Decimal(10, 4)
+  
+  // Временные метки создания/обновления
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   
   // Связи
-  related_news      String[] // IDs связанных новостей
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  created_at        DateTime @default(now())
+  @@map("trades")
 }
 
-// Закладки новостей
-model NewsBookmark {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  news_event_id     String
-  
-  // Метаданные
-  notes             String?
-  
-  created_at        DateTime @default(now())
-}
-
-// Чат история
+// Таблица истории чатов
 model ChatHistory {
-  id                String   @id @default(cuid())
-  user_id           String
-  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  message   String
+  response  String
+  context   Json?
+  timestamp DateTime @default(now())
   
-  // Сообщения
-  message           String
-  is_user_message   Boolean  @default(true)
+  // Связи
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Контекст
-  context           Json?    // Дополнительный контекст
-  
-  created_at        DateTime @default(now())
+  @@map("chat_history")
 }
 
-// Рыночные данные
+// Таблица новостных событий
+model NewsEvent {
+  id              String   @id @default(cuid())
+  cluster         String
+  title           String
+  content         String?
+  source          String
+  publishedAt     DateTime @map("published_at")
+  priceChange1h   Decimal? @map("price_change_1h") @db.Decimal(10, 4)
+  reactionType    String? @map("reaction_type")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Связи
+  aiAnalysis AiAnalysis[]
+  priceImpacts NewsPriceImpact[]
+  
+  @@map("news_events")
+}
+
+// Таблица ИИ-анализа
+model AiAnalysis {
+  id              String   @id @default(cuid())
+  newsEventId     String   @map("news_event_id")
+  gptAnalysis     Json? @map("gpt_analysis")
+  gptConfidence   Decimal? @map("gpt_confidence") @db.Decimal(3, 2)
+  gptReasoning    String? @map("gpt_reasoning")
+  finalVerdict    String? @map("final_verdict")
+  confidence      Decimal? @db.Decimal(3, 2)
+  reasoning       String?
+  patterns        String[]
+  similarCases    Int @default(0) @map("similar_cases")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Связи
+  newsEvent NewsEvent @relation(fields: [newsEventId], references: [id], onDelete: Cascade)
+  
+  @@map("ai_analysis")
+}
+
+// Таблица критических новостей
+model CriticalNews {
+  id          BigInt   @id @default(autoincrement())
+  localId     Int? @map("local_id")
+  sourceName  String? @map("source_name")
+  title       String?
+  content     String?
+  url         String?
+  publishedAt DateTime? @map("published_at")
+  sentiment   Float @default(0.0)
+  urgency     Float @default(1.0)
+  isCritical  Boolean @default(true) @map("is_critical")
+  priority    Int @default(1)
+  marketImpact Float @default(0.0) @map("market_impact")
+  syncedAt    DateTime @default(now()) @map("synced_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("critical_news")
+}
+
+// Таблица обычных новостей
+model NewsItem {
+  id           BigInt   @id @default(autoincrement())
+  localId      Int? @map("local_id")
+  sourceName   String? @map("source_name")
+  title        String?
+  content      String?
+  url          String?
+  publishedAt  DateTime? @map("published_at")
+  sentiment    Float @default(0.5)
+  urgency      Float @default(0.5)
+  isImportant  Boolean @default(false) @map("is_important")
+  priorityLevel Int @default(3) @map("priority_level")
+  syncedAt     DateTime @default(now()) @map("synced_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  @@map("news_items")
+}
+
+// Таблица рыночных данных
 model MarketData {
-  id                String   @id @default(cuid())
+  id        BigInt   @id @default(autoincrement())
+  symbol    String?
+  price     Float?
+  change24h Float? @map("change_24h")
+  volume    Float?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
   
-  // Параметры
-  symbol            String
-  price             Float
-  volume            Float
-  market_cap        Float?
-  
-  // Технические индикаторы
-  rsi               Float?
-  macd              Float?
-  bollinger_upper   Float?
-  bollinger_lower   Float?
-  
-  // Настроения
-  sentiment_score   Float    @default(0)
-  news_count        Int      @default(0)
-  positive_news     Int      @default(0)
-  negative_news     Int      @default(0)
-  
-  timestamp         DateTime @default(now())
+  @@map("market_data")
 }
 
-// Индексы для оптимизации 
+// Таблица критических алертов
+model CriticalAlert {
+  id          BigInt   @id @default(autoincrement())
+  alertType   String? @map("alert_type")
+  message     String?
+  severity    Int @default(1)
+  isProcessed Boolean @default(false) @map("is_processed")
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@map("critical_alerts")
+}
+
+// ========================================
+// НОВЫЕ ТАБЛИЦЫ ДЛЯ ЦЕНОВЫХ ДАННЫХ
+// ========================================
+
+// Таблица сырых ценовых данных (каждую секунду)
+model PriceData {
+  id        String   @id @default(cuid())
+  symbol    String   // BTC, ETH, etc.
+  price     Decimal  @db.Decimal(20, 8)
+  volume    Decimal? @db.Decimal(20, 8)
+  timestamp DateTime // Точное время получения цены
+  source    String   // binance, coinbase, etc.
+  exchange  String   // Название биржи
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Связи
+  priceImpacts NewsPriceImpact[]
+  
+  // Индексы для быстрого поиска
+  @@index([symbol, timestamp])
+  @@index([timestamp])
+  @@index([symbol])
+  @@index([source])
+  
+  @@map("price_data")
+}
+
+// Таблица свечей по разным интервалам
+model Candle {
+  id        String   @id @default(cuid())
+  symbol    String   // BTC, ETH, etc.
+  interval  String   // 1m, 5m, 15m, 1h, 4h, 1d
+  open      Decimal  @db.Decimal(20, 8)
+  high      Decimal  @db.Decimal(20, 8)
+  low       Decimal  @db.Decimal(20, 8)
+  close     Decimal  @db.Decimal(20, 8)
+  volume    Decimal? @db.Decimal(20, 8)
+  openTime  DateTime @map("open_time")   // Время открытия свечи
+  closeTime DateTime @map("close_time")  // Время закрытия свечи
+  source    String   // binance, coinbase, etc.
+  exchange  String   // Название биржи
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  // Связи
+  priceImpacts NewsPriceImpact[]
+  
+  // Индексы для быстрого поиска
+  @@index([symbol, interval, openTime])
+  @@index([symbol, interval, closeTime])
+  @@index([interval, openTime])
+  @@index([symbol])
+  
+  @@map("candles")
+}
+
+// Таблица связи новостей с ценовыми данными
+model NewsPriceImpact {
+  id              String   @id @default(cuid())
+  newsEventId     String   @map("news_event_id")
+  priceDataId     String?  @map("price_data_id")  // Связь с сырой ценой
+  candleId        String?  @map("candle_id")      // Связь со свечой
+  symbol          String   // Символ, на который повлияла новость
+  priceBefore     Decimal? @map("price_before") @db.Decimal(20, 8)  // Цена до новости
+  priceAfter      Decimal? @map("price_after") @db.Decimal(20, 8)   // Цена после новости
+  priceChange     Decimal? @map("price_change") @db.Decimal(10, 4)  // Изменение цены в %
+  volumeChange    Decimal? @map("volume_change") @db.Decimal(10, 4) // Изменение объема в %
+  impactPeriod    Int      @map("impact_period") @default(3600)     // Период влияния в секундах (по умолчанию 1 час)
+  isMarketMoving  Boolean  @default(false) @map("is_market_moving") // Действительно ли новость повлияла на рынок
+  impactScore     Decimal? @map("impact_score") @db.Decimal(5, 2)   // Оценка влияния (0-100)
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Связи
+  newsEvent NewsEvent @relation(fields: [newsEventId], references: [id], onDelete: Cascade)
+  priceData PriceData? @relation(fields: [priceDataId], references: [id], onDelete: SetNull)
+  candle    Candle?   @relation(fields: [candleId], references: [id], onDelete: SetNull)
+  
+  // Индексы для быстрого поиска
+  @@index([newsEventId])
+  @@index([symbol, createdAt])
+  @@index([isMarketMoving])
+  @@index([impactScore])
+  
+  @@map("news_price_impact")
+}
+
+// Добавляем новые поля к существующей модели NewsEvent
+// В модели NewsEvent добавляем связь с ценовыми данными
+// priceImpacts NewsPriceImpact[] // Новые связи с ценовыми данными
+
+// Добавляем новые поля к существующей модели CriticalNews
+// В модели CriticalNews добавляем поля для связи с ценовыми данными:
+// symbol          String? // Символ, к которому относится новость
+// priceAtNews     Decimal? @map("price_at_news") @db.Decimal(20, 8) // Цена в момент появления новости
+// priceChange1h   Decimal? @map("price_change_1h") @db.Decimal(10, 4) // Изменение цены за 1 час
+// priceChange4h   Decimal? @map("price_change_4h") @db.Decimal(10, 4) // Изменение цены за 4 часа
+// volumeChange1h  Decimal? @map("volume_change_1h") @db.Decimal(10, 4) // Изменение объема за 1 час
+// isMarketMoving  Boolean @default(false) @map("is_market_moving") // Повлияла ли новость на рынок

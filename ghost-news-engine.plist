@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ghost.news-engine</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/alexandr/Desktop/CODeAPPs/Ghost/news_engine/simple_news_engine.py</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/alexandr/Desktop/CODeAPPs/Ghost/news_engine</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/alexandr/Desktop/CODeAPPs/Ghost/news_engine/news_engine.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/alexandr/Desktop/CODeAPPs/Ghost/news_engine/news_engine_error.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/Users/alexandr/Desktop/CODeAPPs/Ghost/news_engine</string>
+    </dict>
+</dict>
+</plist>

@@ -5,6 +5,10 @@ import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import ChatInterface from '@/components/ChatInterface'
 import NewsFeed from '@/components/NewsFeed'
+import SystemMonitor from '@/components/SystemMonitor'
+import SignalsMonitor from '@/components/SignalsMonitor'
+import MarketAnalysisChart from '@/components/MarketAnalysisChart'
+import NewsImpactCorrelation from '@/components/NewsImpactCorrelation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,11 +35,7 @@ export default function Dashboard() {
 
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      router.push('/auth')
-      return
-    }
-    setUser(session.user)
+    setUser(session?.user || null)
     setLoading(false)
   }
 
@@ -54,6 +54,10 @@ export default function Dashboard() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
+    router.push('/auth')
+  }
+
+  const handleSignIn = () => {
     router.push('/auth')
   }
 
@@ -79,13 +83,24 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center space-x-4">
-              <span className="text-gray-300">{user?.email}</span>
-              <button
-                onClick={handleSignOut}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
-              >
-                Выйти
-              </button>
+              {user ? (
+                <>
+                  <span className="text-gray-300">{user.email}</span>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+                  >
+                    Выйти
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleSignIn}
+                  className="px-4 py-2 bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white text-sm rounded-lg hover:from-[#5a6fd8] hover:to-[#6a4190] transition-all duration-200"
+                >
+                  Войти
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -285,8 +300,29 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* News Feed */}
-          <NewsFeed />
+          {/* Market Analysis Chart - Main Focus */}
+          <MarketAnalysisChart />
+
+          {/* News Impact Correlation Analysis */}
+          <NewsImpactCorrelation />
+
+          {/* Secondary Panels Grid */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* System Monitor */}
+            <div className="lg:col-span-1">
+              <SystemMonitor />
+            </div>
+
+            {/* Trading Signals Monitor */}
+            <div className="lg:col-span-1">
+              <SignalsMonitor />
+            </div>
+
+            {/* News Feed */}
+            <div className="lg:col-span-1">
+              <NewsFeed />
+            </div>
+          </div>
 
           {/* Trading Signals */}
           <div className="glass rounded-xl p-6">

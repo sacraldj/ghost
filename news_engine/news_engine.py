@@ -11,10 +11,12 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import sqlite3
 import os
+import yaml
 
 from news_sources import NewsSources
 from news_apis import NewsAggregator, NewsItem
 from influence_analyzer import InfluenceAnalyzer, InfluenceScore
+from config_loader import ConfigLoader
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,13 +47,50 @@ class ProcessedNews:
 class NewsEngine:
     """Главный движок новостей GHOST"""
     
-    def __init__(self, db_path: str = "news_engine.db"):
+    def __init__(self, db_path: str = "news_engine.db", config_path: str = "news_engine_config.yaml"):
         self.db_path = db_path
+        self.config_path = config_path
+        
+        # Загружаем конфигурацию с переменными окружения
+        self.config_loader = ConfigLoader(config_path)
+        self.config = self.config_loader.load_config()
+        
         self.sources = NewsSources()
         self.aggregator = NewsAggregator()
         self.analyzer = InfluenceAnalyzer()
         self.setup_database()
         
+        # Применяем настройки из конфигурации
+        self.apply_config()
+    
+    def apply_config(self):
+        """Применяет настройки из конфигурации"""
+        try:
+            # Настройки логирования
+            if 'monitoring' in self.config:
+                log_level = self.config['monitoring'].get('log_level', 'INFO')
+                logging.getLogger().setLevel(getattr(logging, log_level.upper()))
+                
+                log_file = self.config['monitoring'].get('log_file', 'ghost_news_engine.log')
+                if log_file:
+                    file_handler = logging.FileHandler(log_file)
+                    file_handler.setFormatter(logging.Formatter(
+                        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                    ))
+                    logging.getLogger().addHandler(file_handler)
+            
+            # Настройки производительности
+            if 'processing' in self.config:
+                self.batch_size = self.config['processing'].get('batch_size', 50)
+                self.max_retries = self.config['processing'].get('max_retries', 3)
+                self.timeout = self.config['processing'].get('timeout', 10)
+                self.max_concurrent = self.config['processing'].get('max_concurrent_requests', 5)
+            
+            logger.info("Конфигурация применена успешно")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при применении конфигурации: {e}")
+    
     def setup_database(self):
         """Настройка базы данных"""
         conn = sqlite3.connect(self.db_path)

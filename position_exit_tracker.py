@@ -1,15 +1,18 @@
 # === GHOST-META ===
 # 📂 Путь: core/position_exit_tracker.py
-# 📦 Назначение: Отслеживает закрытие позиции по open_trades.json → добавляет exit_time, ROI, и очищает JSON
-# 🔁 Зависимости: ghost_bybit_position.get_position, ghost_write_safe, trace, get_last_exit_fill_price_safe
-# 🔒 Статус: ✅ боевой v1.4 (добавлена запись входного Fill при открытии)
+# 📦 Назначение: Отслеживает закрытие позиции, корректный расчёт PNL/ROI на основе fills
+# 🔒 Статус: ✅ боевой (v2.0 - fills-first + fallback)
+# 🤝 Зависимости: pybit.unified_trading.HTTP, ghost_write_safe, utils.ghost_trace_logger.trace, utils.send_to_queue.log_to_queue, utils.bybit_api.get_executions|get_closed_pnl, utils.get_last_fill_price, leverage_parser.get_leverage
 
 import json
 import time
 import yaml
 import calendar
 from datetime import datetime
+from typing import Dict, Any, List, Tuple, Optional
 from pybit.unified_trading import HTTP
+
+# --- GHOST deps (заглушки импорта: замени на реальные модули проекта) ---
 from core.ghost_bybit_position import get_position
 from ghost_write_safe import ghost_write_safe
 from utils.ghost_trace_logger import trace
@@ -24,17 +27,319 @@ with open("config/api_keys.yaml") as f:
 session = HTTP(api_key=keys["api_key"], api_secret=keys["api_secret"])
 
 OPEN_TRADES_PATH = "output/open_trades.json"
+FEE_RATE = 0.00055
+BE_EPS = 0.0002  # 2 bps допуск для BE
 
-def load_open_trades():
+def _load_open_trades() -> List[Dict[str, Any]]:
     try:
-        with open(OPEN_TRADES_PATH) as f:
+        with open(OPEN_TRADES_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return []
 
-def save_open_trades(data):
-    with open(OPEN_TRADES_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+def _save_open_trades(data: List[Dict[str, Any]]) -> None:
+    try:
+        with open(OPEN_TRADES_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        trace("OPEN_TRADES_WRITE_FAIL", {"err": str(e)}, "position_exit_tracker")
+
+def _signed_profit(entry: float, exit_price: float, qty: float, side: str) -> float:
+    """Вычисляет PnL с учётом направления позиции"""
+    side_l = str(side).lower()
+    if side_l in ("sell", "short"):
+        return (entry - exit_price) * qty
+    return (exit_price - entry) * qty
+
+def _vwap_qty_fee(fills: List[Dict[str, Any]]) -> Tuple[float, float, float]:
+    """Вычисляет VWAP, общее количество и сумму комиссий из fills"""
+    if not fills:
+        return 0.0, 0.0, 0.0
+    
+    total_qty = sum(float(f.get("execQty", 0)) for f in fills)
+    total_value = sum(float(f.get("execPrice", 0)) * float(f.get("execQty", 0)) for f in fills)
+    total_fee = sum(float(f.get("execFee", 0)) for f in fills)
+    
+    vwap = total_value / total_qty if total_qty > 0 else 0.0
+    return vwap, total_qty, total_fee
+
+def _split_fills_by_legs(fills: List[Dict[str, Any]], qty_total: float, side: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Разделяет fills на TP1 (50%) и остаток (50%)"""
+    if not fills:
+        return [], []
+    
+    # Фильтруем закрывающие fills
+    closing_side = "Sell" if side.lower() in ("buy", "long") else "Buy"
+    closing_fills = [f for f in fills if f.get("side") == closing_side and float(f.get("execQty", 0)) > 0]
+    
+    if not closing_fills:
+        return [], []
+    
+    # Сортируем по времени исполнения
+    closing_fills.sort(key=lambda x: int(x.get("execTime", 0)))
+    
+    qty_tp1 = qty_total / 2.0
+    leg_tp1 = []
+    leg_rest = []
+    current_qty = 0.0
+    
+    for fill in closing_fills:
+        fill_qty = float(fill.get("execQty", 0))
+        fill_price = float(fill.get("execPrice", 0))
+        
+        if current_qty < qty_tp1:
+            # Ещё не достигли границы TP1
+            remaining_tp1 = qty_tp1 - current_qty
+            if fill_qty <= remaining_tp1:
+                # Весь fill идёт в TP1
+                leg_tp1.append(fill)
+                current_qty += fill_qty
+            else:
+                # Разделяем fill
+                tp1_part = {
+                    **fill,
+                    "execQty": str(remaining_tp1),
+                    "execPrice": str(fill_price),
+                    "execFee": str(float(fill.get("execFee", 0)) * (remaining_tp1 / fill_qty))
+                }
+                rest_part = {
+                    **fill,
+                    "execQty": str(fill_qty - remaining_tp1),
+                    "execPrice": str(fill_price),
+                    "execFee": str(float(fill.get("execFee", 0)) * ((fill_qty - remaining_tp1) / fill_qty))
+                }
+                leg_tp1.append(tp1_part)
+                leg_rest.append(rest_part)
+                current_qty = qty_tp1
+        else:
+            # Всё остальное идёт в остаток
+            leg_rest.append(fill)
+    
+    return leg_tp1, leg_rest
+
+def _get_executions(symbol: str, start_time: int, end_time: int) -> List[Dict[str, Any]]:
+    """Получает executions (fills) от Bybit API"""
+    try:
+        all_fills = []
+        cursor = None
+        
+        while True:
+            params = {
+                "category": "linear",
+                "symbol": symbol,
+                "startTime": start_time,
+                "endTime": end_time,
+                "limit": 1000
+            }
+            if cursor:
+                params["cursor"] = cursor
+            
+            response = session.get_executions(**params)
+            result = response.get("result", {})
+            fills = result.get("list", [])
+            
+            if not fills:
+                break
+                
+            all_fills.extend(fills)
+            
+            # Проверяем, есть ли следующая страница
+            if not result.get("nextPageCursor"):
+                break
+            cursor = result["nextPageCursor"]
+            
+            # Защита от бесконечного цикла
+            if len(all_fills) > 10000:
+                trace("FILLS_FETCH_LIMIT", {"symbol": symbol, "count": len(all_fills)}, "position_exit_tracker")
+                break
+        
+        trace("FILLS_FETCH_OK", {"symbol": symbol, "count": len(all_fills)}, "position_exit_tracker")
+        return all_fills
+        
+    except Exception as e:
+        trace("FILLS_FETCH_FAIL", {"symbol": symbol, "err": str(e)}, "position_exit_tracker")
+        return []
+
+def _calc_from_fills(trade: Dict[str, Any], fills: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Вычисляет PnL/ROI на основе fills"""
+    if not fills:
+        return {}
+    
+    symbol = trade.get("symbol", "")
+    side = trade.get("side", "Buy")
+    entry_price = float(trade.get("real_entry_price", 0))
+    qty_total = float(trade.get("position_qty", 0))
+    margin_used = float(trade.get("margin_used", 0))
+    
+    if not entry_price or not qty_total or not margin_used:
+        return {"roi_calc_note": "skip_calc: missing entry/qty/margin"}
+    
+    # Разделяем fills на ноги
+    leg_tp1, leg_rest = _split_fills_by_legs(fills, qty_total, side)
+    
+    if not leg_tp1 and not leg_rest:
+        return {"roi_calc_note": "skip_calc: no closing fills"}
+    
+    # Вычисляем VWAP и комиссии для каждой ноги
+    vwap_tp1, qty_tp1, fee_tp1_exit = _vwap_qty_fee(leg_tp1)
+    vwap_rest, qty_rest, fee_rest_exit = _vwap_qty_fee(leg_rest)
+    
+    # Комиссии входа (распределяем пропорционально)
+    entry_fee_total = float(trade.get("entry_fee_total", 0))
+    if entry_fee_total > 0:
+        fee_tp1_entry = entry_fee_total * (qty_tp1 / qty_total)
+        fee_rest_entry = entry_fee_total * (qty_rest / qty_total)
+    else:
+        fee_tp1_entry = 0.0
+        fee_rest_entry = 0.0
+    
+    # PnL для каждой ноги
+    pnl_tp1_gross = _signed_profit(entry_price, vwap_tp1, qty_tp1, side)
+    pnl_tp1_net = pnl_tp1_gross - fee_tp1_entry - fee_tp1_exit
+    
+    pnl_rest_gross = _signed_profit(entry_price, vwap_rest, qty_rest, side)
+    pnl_rest_net = pnl_rest_gross - fee_rest_entry - fee_rest_exit
+    
+    # Финальные значения
+    pnl_final_real = pnl_tp1_net + pnl_rest_net
+    roi_final_real = (pnl_final_real / margin_used) * 100 if margin_used else 0.0
+    
+    # Определяем тип второй ноги
+    exit_tp2_type = "be" if abs(vwap_rest - entry_price) <= entry_price * BE_EPS else "tp2/manual"
+    
+    # Определяем exit_reason
+    tp2_price = float(trade.get("tp2_price", 0))
+    exit_reason = "manual"
+    
+    if tp2_price > 0:
+        # Проверяем, соответствует ли вторая нога TP2
+        if abs(vwap_rest - tp2_price) <= tp2_price * 0.001:  # 0.1% допуск
+            exit_reason = "tp2"
+        elif abs(vwap_rest - entry_price) <= entry_price * BE_EPS:
+            exit_reason = "tp1_be"
+    
+    # Формируем exit_detail
+    exit_detail = f"fills: tp1@{qty_tp1:.1f} + {exit_tp2_type}@{qty_rest:.1f}"
+    
+    return {
+        "pnl_tp1_net": round(pnl_tp1_net, 6),
+        "pnl_rest_net": round(pnl_rest_net, 6),
+        "pnl_final_real": round(pnl_final_real, 6),
+        "roi_tp1_real": round((pnl_tp1_net / margin_used) * 100, 4) if margin_used else 0.0,
+        "roi_rest_real": round((pnl_rest_net / margin_used) * 100, 4) if margin_used else 0.0,
+        "roi_final_real": round(roi_final_real, 4),
+        "exit_reason": exit_reason,
+        "exit_detail": exit_detail,
+        "roi_source": "fills",
+        "pnl_source": "fills",
+        "roi_calc_note": "ok",
+        "bybit_fee_open": round(fee_tp1_entry + fee_rest_entry, 8),
+        "bybit_fee_close": round(fee_tp1_exit + fee_rest_exit, 8),
+        "bybit_fee_total": round(fee_tp1_entry + fee_rest_entry + fee_tp1_exit + fee_rest_exit, 8),
+        "tp1_hit": True if leg_tp1 else False,
+        "tp2_hit": exit_reason == "tp2",
+        "sl_hit": False,  # Будет переопределено ниже
+        "early_exit": False
+    }
+
+def _fallback_calc(trade: Dict[str, Any], exit_price: float) -> Dict[str, Any]:
+    """Fallback расчёт на основе существующей логики"""
+    entry_price = float(trade.get("real_entry_price", 0))
+    qty = float(trade.get("position_qty", 0))
+    side = trade.get("side", "Buy")
+    margin_used = float(trade.get("margin_used", 0))
+    tp1_price = float(trade.get("tp1_price", 0))
+    tp2_price = float(trade.get("tp2_price", 0))
+    
+    if not entry_price or not qty or not margin_used:
+        return {"roi_calc_note": "skip_fallback: missing entry/qty/margin"}
+    
+    qty_half = qty / 2.0
+    fee_in_half = entry_price * qty_half * FEE_RATE
+    
+    # Нога A (TP1 50%)
+    exit_a = tp1_price or exit_price
+    fee_out_a = exit_a * qty_half * FEE_RATE
+    pnl_a = _signed_profit(entry_price, exit_a, qty_half, side) - fee_in_half - fee_out_a
+    
+    # Нога B (остаток 50%)
+    if trade.get("tp2_hit"):
+        exit_b = tp2_price or exit_price
+    else:
+        exit_b = exit_price
+    
+    fee_out_b = exit_b * qty_half * FEE_RATE
+    pnl_b = _signed_profit(entry_price, exit_b, qty_half, side) - fee_in_half - fee_out_b
+    
+    pnl_final = pnl_a + pnl_b
+    roi_final = (pnl_final / margin_used) * 100 if margin_used else 0.0
+    
+    exit_tp2_type = "be" if abs(exit_b - entry_price) <= entry_price * BE_EPS else "tp2/manual"
+    
+    return {
+        "pnl_tp1_net": round(pnl_a, 6),
+        "pnl_tp2_net": round(pnl_b, 6),
+        "pnl_final_real": round(pnl_final, 6),
+        "roi_final_real": round(roi_final, 4),
+        "exit_detail": f"tp1@50% + {exit_tp2_type}@50%",
+        "roi_source": "fallback",
+        "pnl_source": "fallback",
+        "roi_calc_note": "fallback"
+    }
+
+def _duration_sec(trade: Dict[str, Any], exit_dt: datetime) -> Optional[int]:
+    """Вычисляет длительность сделки в секундах"""
+    try:
+        if not trade.get("opened_at"):
+            return None
+        opened = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M:%S")
+        return int((exit_dt - opened).total_seconds())
+    except Exception:
+        return None
+
+def _preview_message(trade: Dict[str, Any], exit_price: float, final_pnl: float, pnl_source: str, duration_sec: Optional[int]) -> str:
+    """Формирует сообщение предпросмотра закрытия сделки"""
+    def yn(v): return "достигнуто" if v else "не достигнуто"
+    def s(v, d="—"):
+        if v is None: return d
+        if isinstance(v, float):
+            try: return f"{v:.5f}"
+            except: return str(v)
+        return str(v)
+
+    symbol = trade.get("symbol", "UNKNOWN")
+    msg = (
+        f"📄 Trade Recorded: {symbol} | {trade.get('trade_id')}\n"
+        f"🔗 Источник:          {trade.get('source_name','—')}\n"
+        f"{'─'*28}\n"
+        f"🟢 Entry Price:        {s(trade.get('real_entry_price'))}\n"
+        f"🔴 Exit Price:         {exit_price:.5f}\n"
+        f"📦 Qty:                {s(trade.get('position_qty'))}\n"
+        f"⚖ Leverage:            {s(trade.get('real_leverage'))}x\n"
+        f"💵 Margin Used:        ${s(trade.get('margin_used'))}\n"
+        f"{'─'*28}\n"
+        f"📇 Bybit (реальные данные):\n"
+        f"📉 ROI (UI):           {s(trade.get('roi_ui'))}%\n"
+        f"💸 Комиссия (факт):    {s(trade.get('bybit_fee_total'))} USDT\n"
+        f"📤 PnL (source):       {final_pnl} USDT ({pnl_source})\n"
+        f"{'─'*28}\n"
+        f"📉 Получено (факт):\n"
+        f"• ROI (TP1):           {s(trade.get('roi_tp1_real'))}%\n"
+        f"• ROI (TP2):           {s(trade.get('roi_tp2_real'))}%\n"
+        f"• ROI (Final):         {s(trade.get('roi_final_real'))}%\n"
+        f"⏱ Duration:            {duration_sec//60 if duration_sec else 0}m {duration_sec%60 if duration_sec else 0}s\n"
+        f"{'─'*28}\n"
+        f"📌 ФИНАЛ:\n"
+        f"💥 РЕЗУЛЬТАТ:          {final_pnl} USDT\n"
+        f"📊 Доходность:         {s(trade.get('roi_final_real'))}% от маржи\n"
+        f"🚩 Exit Reason:        {trade.get('exit_reason','manual')} | {trade.get('exit_detail','—')}\n"
+        f"{'─'*28}\n"
+        f"📍 TP/SL Статус:\n"
+        f"• TP1:  {yn(trade.get('tp1_hit'))}\n"
+        f"• TP2:  {yn(trade.get('tp2_hit'))}\n"
+        f"• SL:   {yn(trade.get('sl_hit'))}\n"
+    )
+    return msg
 
 def cancel_all_orders_both_idx(symbol):
     """Отменяет все активные ордера по позиции (для обоих индексов)"""
@@ -59,7 +364,8 @@ def repeat_cancel_until_clean(symbol):
     print(f"✅ Цикл отмены ордеров завершён для {symbol}")
 
 def check_and_close_positions():
-    trades = load_open_trades()
+    """Основная функция отслеживания закрытия позиций"""
+    trades = _load_open_trades()
     still_open = []
 
     for trade in trades:
@@ -67,37 +373,27 @@ def check_and_close_positions():
             symbol = trade["symbol"]
             entry = float(trade.get("real_entry_price", 0))
             leverage = float(trade.get("real_leverage", 20))
-            side = trade.get("side", "Buy")  # Long (Buy) or Short (Sell)
+            side = trade.get("side", "Buy")
 
             pos1 = get_position(symbol)
             size1 = float(pos1.get("size", 0))
             if size1 > 0:
-                # Позиция ещё открыта
                 still_open.append(trade)
                 continue
 
-            # Позиция потенциально закрыта – перепроверяем спустя 3 секунды
+            # Перепроверяем спустя 3 секунды
             time.sleep(3)
             pos2 = get_position(symbol)
             size2 = float(pos2.get("size", 0))
 
-            # 🛡 НЕ закрывать, если TP1 был, а TP2 и SL — нет, и позиция ещё активна
+            # Защита от преждевременного закрытия
             if size2 > 0 and trade.get("tp1_hit") and not trade.get("tp2_hit") and not trade.get("sl_hit"):
                 log_to_queue("SKIP_EXIT_TP1_ONLY", f"{symbol} | TP1 был, но позиция активна — не закрываем")
                 still_open.append(trade)
                 continue
 
             if size2 == 0:
-
-                # 🛡 Защита: если TP1 уже достигнут, но SL ещё не перенесён — НЕ закрываем
-                if trade.get("tp1_hit") and not trade.get("sl_be_moved"):
-                    msg = f"{symbol} | TP1 достигнут, но SL в BE ещё не выставлен → сделка НЕ закрыта"
-                    print(f"⚠️  {msg}")
-                    log_to_queue("TP1_BE_HOLD", msg)
-                    still_open.append(trade)
-                    continue
-
-                # Позиция закрыта (size=0) → начинаем обработку закрытия
+                # Позиция закрыта - начинаем обработку
                 last_price = float(pos2.get("lastPrice", 0))
                 qty = float(trade.get("position_qty", 0))
                 if not entry or not qty:
@@ -105,280 +401,86 @@ def check_and_close_positions():
                     still_open.append(trade)
                     continue
 
-                # 🛡  Защита: не отменяем ордера, если SL в BE ещё не перенесён
-                if not trade.get("sl_be_moved"):
-                    msg = f"{symbol} | SL ещё не перенесён в BE → ордера НЕ отменяем"
-                    print(f"⚠️  {msg}")
-                    log_to_queue("SKIP_ORDER_CANCEL", msg)
-                else:
-                    tp2_active = False
-                    tp2_order_id = trade.get("tp2_order_id")
-                    try:
-                        if tp2_order_id:
-                            tp2_check = session.get_open_orders(
-                                category="linear",
-                                symbol=symbol,
-                                orderId=tp2_order_id,
-                                openOnly=0
-                            )
-                            tp2_list = tp2_check.get("result", {}).get("list", [])
-                            tp2_active = bool(tp2_list)
-                            if tp2_active:
-                                log_to_queue("TP2_STILL_ACTIVE", f"{symbol} | TP2 всё ещё активен, не удаляем")
-                                still_open.append(trade)
-                                continue
-                    except Exception as e:
-                        log_to_queue("TP2_CHECK_FAIL", f"{symbol} | ошибка при проверке TP2: {e}")
-
-                    if not tp2_active:
+                # Отмена ордеров (если SL уже перенесён в BE)
+                if trade.get("sl_be_moved"):
                         try:
                             repeat_cancel_until_clean(symbol)
                             log_to_queue("ORDERS_CANCELED", f"{symbol} | все отложенные ордера отменены")
                         except Exception as e:
                             log_to_queue("ORDERS_CANCEL_FAIL", f"{symbol} | ошибка отмены ордеров: {e}")
 
-                # 🔁 ВОЗВРАТ ВСЕХ РАСЧЁТОВ ПОЗИЦИИ
-                position_value = entry * qty
-                margin_used = position_value / leverage
-                fee = position_value * 0.00055 * 2  # комиссия на вход+выход (0.055% каждый)
+                # Получаем fills от Bybit API
+                exit_dt = datetime.utcnow()
+                opened_at = trade.get("opened_at")
+                
+                fills = []
+                if opened_at:
+                    try:
+                        opened_dt = datetime.strptime(opened_at, "%Y-%m-%d %H:%M:%S")
+                        start_time = int(opened_dt.timestamp() * 1000) - 300000  # -5 минут
+                        end_time = int(exit_dt.timestamp() * 1000) + 60000      # +1 минута
+                        fills = _get_executions(symbol, start_time, end_time)
+                    except Exception as e:
+                        trace("FILLS_FETCH_EXCEPTION", {"symbol": symbol, "err": str(e)}, "position_exit_tracker")
 
-                pnl_gross = (last_price - entry) * qty
-                pnl_net = pnl_gross - fee
-                roi_gross = round((pnl_gross / margin_used) * 100, 2) if margin_used else 0.0
-                roi_net = round((pnl_net / margin_used) * 100, 2) if margin_used else 0.0
-                margin_usd = float(trade.get("margin_usd") or margin_used or 1)
-                roi_plan = round((pnl_net / margin_usd) * 100, 2) if margin_usd else 0.0
-
-                # Получаем информацию о последнем исполненном ордере выхода (цена fill)
-                fill = get_last_exit_fill_price_safe(symbol)
-                if fill:
-                    fill_price = fill.get("price")
-                    latency = fill.get("latency_ms")
-                    slippage = round(fill_price - last_price, 6) if fill_price and last_price else None
-                    trade["exit_price_bybit"] = fill_price
-                    trade["exit_slippage"] = slippage
-                    trade["exit_latency_ms"] = latency
-
-                    if fill_price:
-                        roi_bybit = round((((fill_price - entry) * qty) - fee) / margin_used * 100, 2) if margin_used else 0.0
-                        trade["roi_percent_bybit"] = roi_bybit
-
-                        # ✅ Фактический PnL (net) с учётом комиссий на вход и выход
-                        fee_open = entry * qty * 0.00055
-                        fee_close = fill_price * qty * 0.00055
-                        fee_total = fee_open + fee_close
-                        bybit_pnl_net = (fill_price - entry) * qty - fee_total
-
-                        trade["bybit_fee_open"] = round(fee_open, 8)
-                        trade["bybit_fee_close"] = round(fee_close, 8)
-                        trade["bybit_fee_total"] = round(fee_total, 8)
-                        trade["bybit_pnl_net"] = round(bybit_pnl_net, 5)
+                # Вычисляем PnL/ROI
+                calc_result = {}
+                if fills:
+                    calc_result = _calc_from_fills(trade, fills)
+                    if calc_result.get("roi_calc_note") == "ok":
+                        trace("FILLS_CALC_OK", {"symbol": symbol}, "position_exit_tracker")
+                    else:
+                        trace("FILLS_PARTIAL_FALLBACK", {"symbol": symbol, "note": calc_result.get("roi_calc_note")}, "position_exit_tracker")
                 else:
-                    trade["exit_price_fallback"] = last_price
+                    trace("FILLS_FETCH_EMPTY", {"symbol": symbol}, "position_exit_tracker")
+                
+                # Fallback если fills недоступны
+                if not calc_result or calc_result.get("roi_calc_note") != "ok":
+                    calc_result = _fallback_calc(trade, last_price)
+                    trace("FALLBACK_CALC_USED", {"symbol": symbol}, "position_exit_tracker")
 
-                # Фиксируем время выхода и статус сделки
-                trade["exit_time"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                trade["status"] = "closed"  # 🛠 [PATCH]
+                # Базовые поля
+                trade["exit_time"] = exit_dt.strftime("%Y-%m-%d %H:%M:%S")
+                trade["status"] = "closed"
 
-                # 🎯 Определяем причину выхода (TP1, TP2, SL, BE, Manual)
+                # Применяем результаты расчёта
+                trade.update(calc_result)
+
+                # Получаем последний fill для дополнительной информации
+                fill = None
                 try:
+                    fill = get_last_exit_fill_price_safe(symbol)
+                except Exception as e:
+                    trace("FILL_FETCH_FAIL", {"symbol": symbol, "err": str(e)}, "position_exit_tracker")
+
+                if fill and fill.get("price"):
+                    trade["exit_price_bybit"] = float(fill["price"])
+                    trade["exit_slippage"] = round(float(fill["price"]) - last_price, 6) if last_price else None
+                    trade["exit_latency_ms"] = fill.get("latency_ms")
+                    trade["order_id_exit"] = fill.get("orderId")
+
+                # Определяем exit_reason если не задан
+                if not trade.get("exit_reason"):
                     tp1_hit = trade.get("tp1_hit")
                     tp2_hit = trade.get("tp2_hit")
                     sl_hit = trade.get("sl_hit")
 
                     if tp2_hit:
-                        exit_reason = "tp2"
-                    elif tp1_hit and not tp2_hit:
-                        exit_reason = "tp1_be"
+                        trade["exit_reason"] = "tp2"
                     elif sl_hit:
-                        exit_reason = "sl"
+                        trade["exit_reason"] = "sl"
+                    elif tp1_hit:
+                        trade["exit_reason"] = "tp1_be"
                     else:
-                        exit_reason = "manual"
-
-                    trade["exit_reason"] = exit_reason
-
-                    # ⏱️ Фиксируем время достижения TP2 / SL
-                    now = datetime.utcnow()
-                    if exit_reason == "tp2":
-                        trade["tp2_hit_time"] = now.strftime("%Y-%m-%d %H:%M:%S")
-                        if trade.get("opened_at"):
-                            dt_open = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M:%S")
-                            trade["tp2_duration_sec"] = int((now - dt_open).total_seconds())
-                    elif exit_reason == "sl":
-                        trade["sl_hit_time"] = now.strftime("%Y-%m-%d %H:%M:%S")
-                        if trade.get("opened_at"):
-                            dt_open = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M:%S")
-                            trade["sl_duration_sec"] = int((now - dt_open).total_seconds())
-
-                except Exception as e:
                     trade["exit_reason"] = "manual"
-                    log_to_queue("EXIT_REASON_FAIL", f"{symbol} → {e}")
 
-                # 📊 ROI-сегмент: расчет TP1/TP2 с точной логикой фондового трейдера
-                try:
-                    tp1_price = float(trade.get("tp1_price") or 0)
-                    tp2_price = float(trade.get("tp2_price") or 0)
-                    sl_price = float(trade.get("sl_price") or 0)
-                    entry_price = float(trade.get("real_entry_price") or 0)
-                    qty = float(trade.get("position_qty") or 0)
-                    fee_rate = 0.00055
-                    margin_used = float(trade.get("margin_used") or 1)
-                    actual_exit_price = float(trade.get("exit_price_bybit") or last_price)
-
-                    qty_half = qty / 2
-
-                    # TP1 - половина позиции закрывается по TP1
-                    profit_tp1 = (tp1_price - entry_price) * qty_half
-                    fee_tp1 = (entry_price + tp1_price) * qty_half * fee_rate
-                    pnl_tp1_net = profit_tp1 - fee_tp1
-
-                    # TP2 - оставшаяся половина закрывается по TP2 или по текущей цене (BE)
-                    tp2_hit = trade.get("tp2_hit")
-                    if tp2_hit:
-                        # TP2 был достигнут - закрываем по TP2
-                        profit_tp2 = (tp2_price - entry_price) * qty_half
-                        fee_tp2 = (entry_price + tp2_price) * qty_half * fee_rate
-                        pnl_tp2_net = profit_tp2 - fee_tp2
-                        exit_tp2_type = "tp2"
-                    else:
-                        # TP2 не был достигнут - закрываем по текущей цене (BE)
-                        profit_tp2 = (actual_exit_price - entry_price) * qty_half
-                        fee_tp2 = (entry_price + actual_exit_price) * qty_half * fee_rate
-                        pnl_tp2_net = profit_tp2 - fee_tp2
-                        exit_tp2_type = "be"
-
-                    pnl_final_real = round(pnl_tp1_net + pnl_tp2_net, 4)
-                    roi_final_real = round((pnl_final_real / margin_used) * 100, 2)
-
-                    # Stop Loss - рассчитывается на полную позицию
-                    loss_sl = (entry_price - sl_price) * qty
-                    fee_sl = (entry_price + sl_price) * qty * fee_rate
-                    pnl_sl_net = loss_sl - fee_sl
-                    roi_sl_real = round((pnl_sl_net / margin_used) * 100, 2)
-
-                    trade["profit_tp1_real"] = round(profit_tp1, 4)
-                    trade["profit_tp2_real"] = round(profit_tp2, 4)
-                    trade["fee_tp1"] = round(fee_tp1, 4)
-                    trade["fee_tp2"] = round(fee_tp2, 4)
-                    trade["pnl_tp1_net"] = round(pnl_tp1_net, 4)
-                    trade["pnl_tp2_net"] = round(pnl_tp2_net, 4)
-                    trade["roi_tp1_real"] = round((pnl_tp1_net / margin_used) * 100, 2)
-                    trade["roi_tp2_real"] = round((pnl_tp2_net / margin_used) * 100, 2)
-                    trade["roi_final_real"] = roi_final_real
-                    trade["pnl_final_real"] = pnl_final_real
-                    trade["roi_sl_real"] = roi_sl_real
-                    trade["tp2_exit_type"] = exit_tp2_type
-                except Exception as e:
-                    log_to_queue("TP_SEGMENT_CALC_FAIL", f"{symbol} → {e}")
-
-                # 📈 Плановые ROI и доход по сигналу с учетом стратегии TP1/TP2 (половина объема)
-                try:
-                    lev_conf = get_leverage(trade, config_path="config/leverage_config.yaml")
-                    trade["leverage_used_expected"] = lev_conf
-
-                    tp1_price = float(trade.get("tp1_price") or 0)
-                    tp2_price = float(trade.get("tp2_price") or 0)
-                    sl_price = float(trade.get("sl_price") or 0)
-                    entry_price = float(trade.get("real_entry_price") or 0)
-                    qty = float(trade.get("position_qty") or 0)
-                    margin_planned = float(trade.get("margin_usd") or trade.get("margin_used") or 1)
-
-                    qty_half = qty / 2
-
-                    # ROI при TP1 (половина объема)
-                    roi_tp1_plan = ((tp1_price - entry_price) / entry_price) * lev_conf * 100
-                    profit_tp1_plan = (tp1_price - entry_price) * qty_half
-
-                    # ROI при TP2 (оставшаяся половина)
-                    roi_tp2_plan = ((tp2_price - entry_price) / entry_price) * lev_conf * 100
-                    profit_tp2_plan = (tp2_price - entry_price) * qty_half
-
-                    # Общая ROI при TP1+TP2 (средневзвешенная по объему)
-                    # TP1: 50% позиции, TP2: 50% позиции
-                    roi_both_plan = round((roi_tp1_plan * 0.5 + roi_tp2_plan * 0.5), 2)
-                    profit_both_plan = round(profit_tp1_plan + profit_tp2_plan, 2)
-
-                    # ROI при Stop-Loss (на 100% позиции)
-                    roi_sl_plan = ((sl_price - entry_price) / entry_price) * lev_conf * 100
-                    loss_sl_plan = (entry_price - sl_price) * qty
-
-                    # Сохраняем
-                    trade["roi_planned"] = round(roi_both_plan, 2)
-                    trade["roi_sl_expected"] = round(roi_sl_plan, 2)
-                    trade["expected_profit_tp1"] = round(profit_tp1_plan, 2)
-                    trade["expected_profit_tp2"] = round(profit_tp2_plan, 2)
-                    trade["expected_profit_total"] = profit_both_plan
-                    trade["expected_loss_sl"] = round(loss_sl_plan, 2)
-
-                except Exception as e:
-                    log_to_queue("PLAN_CALC_FAIL", f"{symbol} → {e}")
-
-                # 🟡 Сохраняем order_id выхода для последующей проверки PnL через API
-                trade["order_id_exit"] = (fill.get("orderId") if fill else None) or trade.get("order_id")
-
-                # Дополняем информацию о времени открытия и длительности сделки
-                try:
-                    dt_open = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M:%S")
-                    trade["weekday"] = dt_open.weekday()
-                    trade["weekday_name"] = calendar.day_name[dt_open.weekday()]
-                    trade["opened_at_full"] = dt_open.strftime("%Y-%m-%d %H:%M:%S")
-                    try:
-                        dt_close = datetime.strptime(trade["exit_time"], "%Y-%m-%d %H:%M:%S")
-                        duration_sec = int((dt_close - dt_open).total_seconds())
-                        trade["duration_sec"] = duration_sec
-                    except Exception as e:
-                        log_to_queue("DURATION_CALC_FAIL", f"{symbol} → {e}")
-                        duration_sec = None
-                except Exception as e:
-                    log_to_queue("WEEKDAY_FAIL", f"{symbol} | {e}")
-
-                # Финальный перерасчёт ROI и PnL (Bybit style), если есть все данные
-                try:
-                    if all([
-                        trade.get("real_entry_price"),
-                        trade.get("position_qty"),
-                        trade.get("exit", {}).get("price") or trade.get("exit_price_bybit")
-                    ]):
-                        entry_val = float(trade["real_entry_price"])
-                        pos_qty = float(trade["position_qty"])
-                        lev_real = float(trade.get("real_leverage") or 20)
-                        fee_rate = 0.00055
-                        actual_exit_price = float(trade.get("exit", {}).get("price") or trade.get("exit_price_bybit") or last_price)
-
-                        roi_bybit_style = ((actual_exit_price - entry_val) * lev_real) / entry_val * 100 if entry_val else 0.0
-                        trade["roi_bybit_style"] = round(roi_bybit_style, 2)
-
-                        fee_open_val = entry_val * pos_qty * fee_rate
-                        fee_close_val = actual_exit_price * pos_qty * fee_rate
-                        fee_total_val = fee_open_val + fee_close_val
-                        pnl_net_bybit = (actual_exit_price - entry_val) * pos_qty - fee_total_val
-
-                        trade["bybit_fee_open"] = round(fee_open_val, 8)
-                        trade["bybit_fee_close"] = round(fee_close_val, 8)
-                        trade["bybit_fee_total"] = round(fee_total_val, 8)
-                        trade["bybit_pnl_net"] = round(pnl_net_bybit, 5)
-
-                        # Доля комиссии от движения цены (%)
-                        gross_move = pnl_net_bybit + fee_total_val
-                        trade["commission_over_roi"] = round((fee_total_val / abs(gross_move)) * 100, 2) if gross_move != 0 else None
-
-                        trade["loss_type"] = "fee_only" if trade["pnl_gross"] > 0 and trade["pnl_net"] < 0 else "price_move"
-
-                        delta_price = abs(actual_exit_price - entry_val)
-                        if roi_bybit_style == 0.0 and delta_price > entry_val * 0.001:
-                            trade["anomaly_flag"] = True
-                            print(f"[⚠️] ANOMALY_ROI_ZERO: Δ={delta_price:.5f}")
-                    else:
-                        print(f"[⛔️] EXIT_BLOCK_SKIPPED: missing values for ROI calc")
-                except Exception as e:
-                    print(f"[🔥] ROI_BLOCK_FAIL: {symbol} | {e}")
-
-                # Запрашиваем точный PnL и комиссии через API закрытых сделок Bybit
+                # Получаем PnL через API
                 try:
                     if trade.get("order_id"):
                         closed = session.get_closed_pnl(category="linear", symbol=symbol, limit=20)
                     else:
                         closed = {"result": {"list": []}}
+                    
                     found = False
                     for item in closed.get("result", {}).get("list", []):
                         if item.get("orderId") in [trade.get("order_id"), trade.get("order_id_exit")]:
@@ -388,187 +490,90 @@ def check_and_close_positions():
                             trade["bybit_avg_exit_api"] = float(item.get("avgExitPrice", 0))
                             trade["bybit_closed_size"] = float(item.get("closedSize", 0))
                             trade["order_id_exit"] = item.get("orderId")
-                            log_to_queue("PNL_API_FETCHED", (
-                                f"{symbol} | {trade.get('trade_id')} | ✅ PnL fetched from Bybit API: "
-                                f"{trade['bybit_pnl_net_api']} USDT | Order: {item.get('orderId')}"
-                            ))
-                            trace("PNL_API_FETCHED", trade, where="bybit_pnl_checker")
+                            
+                            # Сравнение с нашими расчётами
+                            if trade.get("pnl_final_real") is not None:
+                                diff = abs(trade["bybit_pnl_net_api"] - trade["pnl_final_real"])
+                                if diff > 0.01:  # Допуск 1 цент
+                                    trace("FILLS_VS_API_MISMATCH", {
+                                        "symbol": symbol,
+                                        "our_pnl": trade["pnl_final_real"],
+                                        "api_pnl": trade["bybit_pnl_net_api"],
+                                        "diff": diff
+                                    }, "position_exit_tracker")
+                            
+                            log_to_queue("PNL_API_FETCHED", f"{symbol} | PnL from API: {trade['bybit_pnl_net_api']} USDT")
                             found = True
                             break
+                    
                     if not found:
-                        api_list = closed.get("result", {}).get("list", [])
-                        if api_list:
-                            fallback = api_list[0]
-                            trade["bybit_pnl_net_api"] = float(fallback.get("closedPnl", 0))
-                            trade["order_id_exit"] = fallback.get("orderId")
-                            log_to_queue("PNL_API_USED_FIRST", (
-                                f"{symbol} | {trade.get('trade_id')} | fallback API used → "
-                                f"{fallback.get('orderId')}, pnl={trade['bybit_pnl_net_api']} USDT"
-                            ))
-                            trace("PNL_API_USED_FIRST", trade, where="bybit_pnl_checker")
-                        else:
-                            log_to_queue("PNL_NOT_FOUND", f"{symbol} | {trade.get('trade_id')} | ордер не найден")
-                            trace("PNL_NOT_FOUND", trade, where="bybit_pnl_checker")
+                        log_to_queue("PNL_NOT_FOUND", f"{symbol} | ордер не найден в API")
+                        
                 except Exception as e:
                     log_to_queue("PNL_API_FAIL", f"{symbol} | {e}")
 
-                # Определяем финальный PnL и источник данных
+                # Определяем финальный PnL и источник
                 final_pnl = None
                 pnl_source = "unknown"
+                
                 if trade.get("bybit_pnl_net_api") is not None:
                     final_pnl = trade["bybit_pnl_net_api"]
                     pnl_source = "bybit"
-                elif trade.get("bybit_pnl_net_fallback") is not None:
-                    final_pnl = trade["bybit_pnl_net_fallback"]
-                    pnl_source = "fallback"
-                elif trade.get("bybit_pnl_net") is not None:
-                    final_pnl = trade["bybit_pnl_net"]
-                    pnl_source = "calc"
+                elif trade.get("pnl_final_real") is not None:
+                    final_pnl = trade["pnl_final_real"]
+                    pnl_source = trade.get("pnl_source", "calc")
 
-                # На всякий случай, дублируем order_id_exit из исходного ордера
-                trade["order_id_exit"] = trade.get("order_id")
-
-                # 🧮 Финальный ROI с учётом TP1/TP2 логики
-                roi_final = trade.get("roi_final_real")
+                # Дополнительные поля
                 try:
-                    if roi_final is not None:
-                        trade["roi_percent"] = roi_final
-                        trade["roi_source"] = "real_split"
-                    else:
-                        trade["roi_percent"] = round((final_pnl / trade["margin_used"]) * 100, 2)
-                        trade["roi_source"] = pnl_source
-                except Exception:
-                    trade["roi_percent"] = "?"
-                    trade["roi_source"] = "fail"
-                trade["roi_percent_initial"] = trade["roi_percent"]
-
-                # 🎯 Hit-статус на основе exit_reason — только если ещё не зафиксированы
-                if trade.get("tp1_hit") is not True:
-                    trade["tp1_hit"] = exit_reason in ["tp1_be", "tp2"]
-                if trade.get("tp2_hit") is not True:
-                    trade["tp2_hit"] = exit_reason == "tp2"
-                if trade.get("sl_hit") is not True:
-                    trade["sl_hit"] = exit_reason == "sl"
-
-                # Если использован fallback-подсчёт, фиксируем источник
-                if trade.get("bybit_pnl_net_fallback") is not None:
-                    trade["pnl_net"] = trade["bybit_pnl_net_fallback"]
-                    trade["roi_source"] = "fallback"
-                    trade["pnl_net_initial"] = trade["pnl_net"]
-
-                # 🧠 Фиксация достижения TP/SL для сделки (в т.ч. multi-target)
-                exit_price_val = float(trade.get("exit_price_bybit") or last_price)
-                try:
-                    if "strategy_2" in str(trade.get("strategy_id", "")):
-                        # 🛠 [PATCH]: Отмечаем достижение целей для многоцелевой стратегии
-                        trade["tp1_hit"] = True if trade["exit_reason"] == "tp" or exit_price_val >= float(trade.get("tp1_price", 0) or 0) else False
-                        trade["tp2_hit"] = True if exit_price_val >= float(trade.get("tp2_price", 0) or 0) else False
-                        trade["sl_hit"] = True if trade["exit_reason"] == "sl" else False
-                    else:
-                        trade["tp1_hit"] = True if trade.get("tp1_price") and exit_price_val >= float(trade["tp1_price"]) else False
-                        trade["tp2_hit"] = True if trade.get("tp2_price") and exit_price_val >= float(trade["tp2_price"]) else False
-                        trade["sl_hit"] = True if trade.get("sl_price") and exit_price_val <= float(trade["sl_price"]) else False
-                    # Флаги раннего выхода (AI) на данный момент не используются
-                    trade["early_exit"] = False
-                    trade["early_exit_reason"] = None
-                    trade["exit_explanation"] = None
-                    trade["exit_ai_score"] = None
+                    dt_open = datetime.strptime(trade["opened_at"], "%Y-%m-%d %H:%M:%S")
+                    trade["weekday"] = dt_open.weekday()
+                    trade["weekday_name"] = calendar.day_name[dt_open.weekday()]
+                    trade["opened_at_full"] = dt_open.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    duration_sec = _duration_sec(trade, exit_dt)
+                    if duration_sec is not None:
+                        trade["duration_sec"] = duration_sec
+                        
                 except Exception as e:
-                    log_to_queue("TP_SL_EVAL_FAIL", f"{symbol} | {e}")
+                    log_to_queue("DURATION_CALC_FAIL", f"{symbol} | {e}")
 
-                # ROI как в UI Bybit (для проверки, по позиции)
+                # ROI UI (проверочное)
                 try:
-                    entry_price_val = float(trade["real_entry_price"])
-                    exit_price_val = float(trade.get("exit_price_bybit") or last_price)
-                    leverage_val = float(trade.get("real_leverage", 20))
-                    roi_ui = ((exit_price_val - entry_price_val) / entry_price_val * leverage_val * 100) if entry_price_val else 0.0
+                    entry_price_val = float(trade.get("real_entry_price") or 0)
+                    lev = float(trade.get("real_leverage") or 1)
+                    exit_price_used = float(trade.get("exit_price_bybit") or last_price)
+                    
+                    if entry_price_val > 0:
+                        roi_ui = ((exit_price_used - entry_price_val) / entry_price_val) * lev * 100.0
                     trade["roi_ui"] = round(roi_ui, 2)
-                except Exception as e:
+                except Exception:
                     trade["roi_ui"] = None
 
-                # ✅ Добавляем TP/SL order_id в структуру trade перед логами и записью в БД
-                trade["tp1_order_id"] = trade.get("tp1_order_id")
-                trade["tp2_order_id"] = trade.get("tp2_order_id")
-                trade["sl_order_id"] = trade.get("sl_order_id")
-
+                # Предпросмотр и запись
                 log_to_queue("EXIT_PREVIEW_TRIGGERED", f"{symbol} | готовим предпросмотр закрытия сделки")
 
-                # Логируем подробный предпросмотр закрытия сделки
                 try:
-                    def yesno(v): return "достигнуто" if v else "не достигнуто"
-                    def safe(v, d="?"):
-                        return v if v is not None else d
+                    duration = _duration_sec(trade, exit_dt)
+                    preview = _preview_message(trade, last_price, final_pnl or 0, pnl_source, duration)
+                    log_to_queue("EXIT_INSERT_PREVIEW", preview)
 
-                    duration = safe(duration_sec, 0)
-                    message = (
-                        f"📄 <b>Trade Recorded: {symbol} | {trade.get('trade_id')}</b>\n"
-                        f"🔗 Источник:          {trade.get('source_name', '—')}\n"
-                        f"{'─' * 28}\n"
-                        f"🟢 Entry Price:        {safe(entry):.5f}\n"
-                        f"🔴 Exit Price:         {safe(last_price):.5f}\n"
-                        f"📦 Qty:                {safe(qty):.4f}\n"
-                        f"⚖️ Leverage:            {safe(trade.get('real_leverage'))}x\n"
-                        f"💵 Margin Used:        ${safe(trade.get('margin_used'))}\n"
-                        f"{'─' * 28}\n"
-                        f"📇 <b>Bybit (реальные данные):</b>\n"
-                        f"✅ ROI (API):          {safe(trade.get('roi_percent_bybit'))}%\n"
-                        f"📉 ROI (UI):           {safe(trade.get('roi_ui'))}% | Bybit: {safe(trade.get('roi_bybit_style'))}%\n"
-                        f"💸 Комиссия (факт):    {safe(trade.get('bybit_fee_total'))} USDT\n"
-                        f"📤 PnL (source):       {safe(final_pnl)} USDT ({safe(pnl_source)})\n"
-                        f"{'─' * 28}\n"
-                        f"📈 <b>Ожидалось по сигналу:</b>\n"
-                        f"• TP1: {safe(trade.get('tp1_price'))} → ROI план: {safe(trade.get('roi_planned'))}%\n"
-                        f"• SL:  {safe(trade.get('sl_price'))} → ROI SL:    {safe(trade.get('roi_sl_expected'))}%\n"
-                        f"💰 Profit @ TP1:      +{safe(trade.get('expected_profit_tp1'))} USDT\n"
-                        f"💣 Loss   @ SL:       -{safe(trade.get('expected_loss_sl'))} USDT\n"
-                        f"{'─' * 28}\n"
-                        f"📉 <b>Получено (факт):</b>\n"
-                        f"• ROI (Net):           {safe(trade.get('roi_percent'))}%\n"
-                        f"• ROI (TP1):           {safe(trade.get('roi_tp1_real'))}%\n"
-                        f"• ROI (TP2):           {safe(trade.get('roi_tp2_real'))}%\n"
-                        f"• ROI (SL):            {safe(trade.get('roi_sl_real'))}%\n"
-                        f"• ROI (Final):         {safe(trade.get('roi_final_real'))}%\n"
-                        f"⏱️ Duration:            {duration // 60}m {duration % 60}s\n"
-                        f"{'─' * 28}\n"
-                        f"📌 <b>ФИНАЛ:</b>\n"
-                        f"💥 РЕЗУЛЬТАТ:          {safe(final_pnl)} USDT\n"
-                        f"📊 Доходность:         {safe(trade.get('roi_percent'))}% от маржи\n"
-                        f"📆 Day:                {safe(trade.get('weekday_name'))} ({safe(trade.get('opened_at_full'))})\n"
-                        f"🚩 Exit Reason:        {safe(trade.get('exit_reason'))} | TP2 type: {safe(trade.get('tp2_exit_type'))}\n"
-                        f"{'─' * 28}\n"
-                        f"📍 <b>TP/SL Статус:</b>\n"
-                        f"• TP1:  {yesno(trade.get('tp1_hit'))}\n"
-                        f"• TP2:  {yesno(trade.get('tp2_hit'))}\n"
-                        f"• SL:   {yesno(trade.get('sl_hit'))}\n"
-                        f"• Early Exit:         {safe(trade.get('early_exit'))}\n"
-                    )
-
-                    log_to_queue("EXIT_INSERT_PREVIEW", message)
-
-                    try:
-                        ghost_write_safe("trades", trade)  # сохраняем запись сделки в БД
-                        trace("EXIT_RECORDED", {"symbol": symbol, "roi": roi_net, "id": trade.get("id")}, where="position_exit_tracker")
-                        log_to_queue("DEAL_CLOSED", f"{symbol} | ROI: {roi_net}%")
-                        print(f"[✅] WRITE_OK → {symbol}")
-                    except Exception as e:
-                        print(f"[❌] FINAL_EXIT_BLOCK_FAIL → {symbol} | {e}")
-                        continue
+                    ghost_write_safe("trades", trade)
+                    trace("EXIT_RECORDED", {"symbol": symbol, "roi": trade.get("roi_final_real"), "id": trade.get("id")}, "position_exit_tracker")
+                    log_to_queue("DEAL_CLOSED", f"{symbol} | ROI: {trade.get('roi_final_real')}%")
+                    print(f"[✅] WRITE_OK → {symbol}")
+                    
                 except Exception as e:
                     print(f"[❌] EXIT_INSERT_PREVIEW_FAIL → {symbol} | {e}")
                     continue
 
-                # (Если по каким-то причинам exit_time не задан, не удаляем сделку из открытых)
-                if not trade.get("exit_time"):
-                    log_to_queue("EXIT_TIME_MISSING", f"{symbol} | exit_time отсутствует, сделка не удалена из списка открытых")
-                    still_open.append(trade)
         except Exception as e:
-            trace("EXIT_CHECK_FAIL", {"error": str(e), "symbol": trade.get("symbol"), "id": trade.get("id")}, where="position_exit_tracker")
-            log_to_queue("EXIT_EXCEPTION", f"{symbol} | ошибка в блоке try: {str(e)}")
+            trace("EXIT_CHECK_FAIL", {"error": str(e), "symbol": trade.get("symbol"), "id": trade.get("id")}, "position_exit_tracker")
+            log_to_queue("EXIT_EXCEPTION", f"{trade.get('symbol', 'UNKNOWN')} | ошибка в блоке try: {str(e)}")
 
-    save_open_trades(still_open)
+    _save_open_trades(still_open)
 
 if __name__ == "__main__":
-    print("🔁 GHOST Exit Monitor запущен...")
+    print("🔁 GHOST Exit Monitor v2.0 (fills-first) запущен...")
     while True:
         check_and_close_positions()
         time.sleep(10) 

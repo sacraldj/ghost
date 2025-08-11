@@ -1,0 +1,351 @@
+# GHOST Unified System Configuration
+# Конфигурация объединённой системы GHOST
+
+orchestrator:
+  # Интервал проверки модулей (секунды)
+  check_interval: 10
+  # Максимальное количество перезапусков
+  max_restarts: 3
+  # Таймаут health check (секунды)
+  health_check_timeout: 30
+  # Уровень логирования
+  log_level: INFO
+  # Директория для PID файлов
+  pid_dir: pids
+  # Директория для логов
+  log_dir: logs
+
+# Конфигурация Redis
+redis:
+  enabled: true
+  url: redis://localhost:6379/0
+  password: null
+  max_connections: 10
+  socket_keepalive: true
+  socket_keepalive_options: {}
+
+# Конфигурация базы данных
+database:
+  # Supabase PostgreSQL
+  supabase_url: ${SUPABASE_URL}
+  supabase_key: ${SUPABASE_SECRET_KEY}
+  # Локальная SQLite (резерв)
+  sqlite_path: ghost_unified.db
+  # Пул соединений
+  pool_size: 20
+  max_overflow: 30
+  pool_timeout: 30
+
+# Конфигурация торговли
+trading:
+  # Максимальное количество одновременных сделок
+  max_concurrent_trades: 5
+  # Максимальный риск на сделку (%)
+  max_risk_per_trade: 0.02
+  # Максимальный дневной риск (%)
+  max_daily_risk: 0.10
+  # Минимальный баланс для торговли (USDT)
+  min_balance: 100
+  # Размер позиции по умолчанию (USDT)
+  default_position_size: 100
+
+# Конфигурация ML фильтрации
+ml_filtering:
+  # Минимальная уверенность для сигнала
+  min_confidence: 0.7
+  # Интервал переобучения (секунды)
+  retrain_interval: 3600
+  # Период истории для фич (часы)
+  feature_lookback: 168
+  # Модели для использования
+  models:
+    - logistic_regression
+    - xgboost
+    - neural_network
+  # Веса моделей в ансамбле
+  ensemble_weights:
+    logistic_regression: 0.3
+    xgboost: 0.5
+    neural_network: 0.2
+
+# Конфигурация сбора данных
+data_collection:
+  # Интервал проверки новостей (секунды)
+  news_check_interval: 30
+  # Интервал обновления цен (секунды)
+  price_feed_interval: 1
+  # Интервал опроса Telegram (секунды)
+  telegram_poll_interval: 1
+  # Максимальный возраст новости (часы)
+  max_news_age: 24
+  # Максимальный размер кэша
+  max_cache_size: 10000
+
+# Конфигурация уведомлений
+notifications:
+  telegram:
+    enabled: true
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
+    admin_chat_id: ${TELEGRAM_ADMIN_CHAT_ID}
+  email:
+    enabled: false
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    username: ${EMAIL_USERNAME}
+    password: ${EMAIL_PASSWORD}
+  webhook:
+    enabled: false
+    url: ${WEBHOOK_URL}
+
+# Конфигурация внешних API
+external_apis:
+  bybit:
+    api_key: ${BYBIT_API_KEY}
+    secret_key: ${BYBIT_SECRET_KEY}
+    testnet: false
+    rate_limit: 100  # requests per minute
+  newsapi:
+    api_key: ${NEWSAPI_KEY}
+    rate_limit: 1000  # requests per day
+  twitter:
+    bearer_token: ${TWITTER_BEARER_TOKEN}
+    rate_limit: 300  # requests per 15 minutes
+
+# Конфигурация модулей системы
+modules:
+  # News Engine - сбор и анализ новостей
+  news_engine:
+    enabled: true
+    command: ["python3", "enhanced_news_engine.py"]
+    working_dir: news_engine
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 60.0
+    dependencies: []
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 1.0
+      memory_limit: 512  # MB
+
+  # Price Feed Engine - сбор ценовых данных
+  price_feed:
+    enabled: true
+    command: ["python3", "price_feed_engine.py"]
+    working_dir: news_engine
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 30.0
+    dependencies: []
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+  # Supabase Sync - синхронизация с Supabase
+  supabase_sync:
+    enabled: true
+    command: ["python3", "supabase_sync.py"]
+    working_dir: news_engine
+    restart_on_failure: true
+    max_restarts: 5
+    restart_delay: 10.0
+    health_check_interval: 60.0
+    dependencies: ["news_engine", "price_feed"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+  # Telegram Listener - прослушивание торговых каналов
+  telegram_listener:
+    enabled: true   # Включен для тестирования
+    command: ["python3", "telegram_listener.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 5
+    restart_delay: 10.0
+    health_check_interval: 30.0
+    dependencies: []
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_PHONE: ${TELEGRAM_PHONE}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+  # Signal Processor - обработка торговых сигналов
+  signal_processor:
+    enabled: true   # Включен для тестирования
+    command: ["python3", "signal_processor.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 60.0
+    dependencies: ["telegram_listener"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 1.0
+      memory_limit: 512  # MB
+
+  # ML Filtering System - фильтрация сигналов
+  ml_filtering:
+    enabled: false  # Пока отключен
+    command: ["python3", "ml_filtering_system.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 120.0
+    dependencies: ["signal_processor"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 2.0
+      memory_limit: 1024  # MB
+
+  # Trade Executor - исполнение сделок
+  trade_executor:
+    enabled: false  # Пока отключен
+    command: ["python3", "trade_executor.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 30.0
+    dependencies: ["ml_filtering"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 1.0
+      memory_limit: 512  # MB
+
+  # Position Manager - управление позициями
+  position_manager:
+    enabled: false  # Пока отключен
+    command: ["python3", "position_manager.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 30.0
+    dependencies: ["trade_executor"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+  # Position Exit Tracker - отслеживание закрытия позиций
+  position_exit_tracker:
+    enabled: false  # Пока отключен
+    command: ["python3", "position_exit_tracker.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 30.0
+    dependencies: ["position_manager"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+  # PnL Checker - проверка PnL через Bybit API
+  pnl_checker:
+    enabled: false  # Пока отключен
+    command: ["python3", "pnl_checker.py"]
+    working_dir: core
+    restart_on_failure: true
+    max_restarts: 3
+    restart_delay: 5.0
+    health_check_interval: 120.0
+    dependencies: ["position_exit_tracker"]
+    environment:
+      PYTHONPATH: ${PYTHONPATH}
+    resources:
+      cpu_limit: 0.5
+      memory_limit: 256  # MB
+
+# Конфигурация мониторинга
+monitoring:
+  # Метрики системы
+  system_metrics:
+    enabled: true
+    collection_interval: 60  # секунды
+    retention_period: 168    # часы (7 дней)
+  
+  # Алерты
+  alerts:
+    enabled: true
+    # CPU использование (%)
+    cpu_threshold: 80
+    # Память использование (%)
+    memory_threshold: 85
+    # Количество неудачных перезапусков
+    restart_threshold: 5
+    # Время отклика health check (секунды)
+    health_check_timeout: 30
+
+# Конфигурация логирования
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_handler:
+    enabled: true
+    filename: logs/ghost_orchestrator.log
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+  console_handler:
+    enabled: true
+  syslog_handler:
+    enabled: false
+    address: localhost:514
+
+# Конфигурация безопасности
+security:
+  # Шифрование конфигурации
+  encryption:
+    enabled: false
+    key_file: config/.encryption_key
+  # Ротация API ключей
+  api_key_rotation:
+    enabled: false
+    rotation_interval: 86400  # 24 часа
+  # Аудит действий
+  audit_log:
+    enabled: true
+    file: logs/audit.log
+
+# Режимы работы
+modes:
+  # Режим разработки
+  development:
+    debug: true
+    mock_apis: true
+    reduced_intervals: true
+  
+  # Тестовый режим
+  testing:
+    debug: false
+    mock_apis: false
+    paper_trading: true
+  
+  # Производственный режим
+  production:
+    debug: false
+    mock_apis: false
+    paper_trading: false
+    
+# Текущий режим
+current_mode: development

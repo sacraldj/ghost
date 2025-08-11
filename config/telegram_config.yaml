@@ -1,0 +1,179 @@
+# GHOST Telegram Listener Configuration
+# Конфигурация для прослушивания торговых каналов
+
+# Настройки Telegram API
+telegram:
+  # Получить на https://my.telegram.org/auth
+  api_id: ${TELEGRAM_API_ID}
+  api_hash: ${TELEGRAM_API_HASH}
+  session_name: "ghost_listener"
+  # Опционально: номер телефона для входа
+  phone_number: ${TELEGRAM_PHONE}
+
+# Настройки Redis
+redis:
+  enabled: true
+  url: redis://localhost:6379/1
+  password: null
+  signals_queue: "ghost:signals:new"
+  max_queue_size: 1000
+
+# Настройки базы данных
+database:
+  signals_table: "trading_signals"
+  traders_table: "trader_stats"
+  channels_table: "telegram_channels"
+
+# Настройки парсинга
+parsing:
+  # Минимальная уверенность для сохранения сигнала
+  min_confidence: 0.6
+  # Сохранять ли все сигналы (включая невалидные)
+  save_all_signals: true
+  save_invalid_signals: false
+  # Максимальный возраст сообщения для обработки (минуты)
+  max_message_age: 5
+  
+# Настройки мониторинга
+monitoring:
+  health_check_interval: 60  # секунды
+  stats_update_interval: 300  # секунды
+  max_processing_time: 30     # секунды на сообщение
+
+# Каналы для прослушивания
+channels:
+  # Пример конфигурации канала
+  - id: "@example_signals"
+    name: "Example Trading Signals"
+    trader_name: "ExampleTrader"
+    enabled: false  # Отключен по умолчанию
+    parser_type: "default"
+    priority: 3
+    min_confidence: 0.7
+    signal_patterns:
+      - "LONG"
+      - "SHORT" 
+      - "BUY"
+      - "SELL"
+    
+  # Добавьте реальные каналы здесь
+  # - id: "@real_channel_1"
+  #   name: "Real Trading Channel 1"
+  #   trader_name: "Trader1"
+  #   enabled: true
+  #   parser_type: "custom_parser_1"
+  #   priority: 5
+  #   min_confidence: 0.8
+  
+  # - id: -1001234567890  # Числовой ID канала
+  #   name: "Private Channel"
+  #   trader_name: "PrivateTrader"
+  #   enabled: true
+  #   parser_type: "default"
+  #   priority: 4
+
+# Кастомные парсеры для конкретных каналов
+custom_parsers:
+  # Парсер для канала "2Trade - slivaeminfo"
+  parser_2trade:
+    class_name: "Parser2Trade"
+    patterns:
+      symbol: '([A-Z]+/USDT|[A-Z]+USDT)'
+      direction: '(LONG|SHORT)'
+      entry: '(?:Entry|Вход)[\s:]*([0-9.,\-\s]+)'
+      tp: '(?:TP|Target)[\s:]*([0-9.,\-\s]+)'
+      sl: '(?:SL|Stop)[\s:]*([0-9.,\-\s]+)'
+  
+  # Парсер для канала "Crypto Hub"
+  parser_crypto_hub:
+    class_name: "ParserCryptoHub"
+    patterns:
+      symbol: '🔥\s*([A-Z]+/USDT)'
+      direction: '📈\s*(LONG|SHORT)'
+      entry: 'Entry:\s*([0-9.,\-\s]+)'
+      tp: 'TP[1-9]?:\s*([0-9.,\-\s]+)'
+      sl: 'SL:\s*([0-9.,\-\s]+)'
+
+# Фильтры сигналов
+filters:
+  # Символы для фильтрации
+  allowed_symbols:
+    - "BTCUSDT"
+    - "ETHUSDT" 
+    - "BNBUSDT"
+    - "ADAUSDT"
+    - "SOLUSDT"
+    - "XRPUSDT"
+    - "DOTUSDT"
+    - "AVAXUSDT"
+    - "MATICUSDT"
+    - "LINKUSDT"
+  
+  # Запрещённые символы
+  blocked_symbols:
+    - "LUNAUSDT"  # Пример заблокированной монеты
+  
+  # Фильтры по параметрам
+  min_tp_levels: 1        # Минимум TP уровней
+  max_leverage: 50        # Максимальное плечо
+  min_risk_reward: 1.5    # Минимальное соотношение риск/прибыль
+
+# Уведомления
+notifications:
+  telegram_bot:
+    enabled: false
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    admin_chat_id: ${TELEGRAM_ADMIN_CHAT_ID}
+    notify_on_errors: true
+    notify_on_signals: false  # Только критичные сигналы
+  
+  webhook:
+    enabled: false
+    url: ${SIGNAL_WEBHOOK_URL}
+    secret: ${WEBHOOK_SECRET}
+
+# Статистика и аналитика
+analytics:
+  # Метрики трейдеров
+  trader_metrics:
+    track_win_rate: true
+    track_avg_roi: true
+    track_signal_frequency: true
+    update_interval: 3600  # секунды
+  
+  # Метрики каналов
+  channel_metrics:
+    track_message_volume: true
+    track_signal_quality: true
+    track_response_time: true
+
+# Режимы работы
+modes:
+  # Режим разработки
+  development:
+    mock_channels: true
+    log_all_messages: true
+    save_raw_messages: true
+  
+  # Тестовый режим
+  testing:
+    dry_run: true
+    mock_telegram: false
+    limited_channels: true
+  
+  # Производственный режим
+  production:
+    mock_channels: false
+    log_all_messages: false
+    save_raw_messages: false
+
+# Текущий режим
+current_mode: development
+
+# Логирование
+logging:
+  level: INFO
+  file: "logs/telegram_listener.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

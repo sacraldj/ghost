@@ -8,7 +8,7 @@ database:
 sources:
   newsapi:
     enabled: true
-    api_key: ""  # Добавьте ваш NewsAPI ключ
+    api_key: "${NEWS_API_KEY}"  # Берется из .env
     base_url: "https://newsapi.org/v2"
     keywords: 
       - "crypto"
@@ -22,8 +22,8 @@ sources:
     interval: 60
 
   twitter:
-    enabled: false  # Требует настройки Twitter API v2
-    bearer_token: ""
+    enabled: true  # Включен, если есть токен
+    bearer_token: "${TWITTER_BEARER_TOKEN}"  # Берется из .env
     keywords:
       - "#crypto"
       - "#bitcoin"
@@ -33,9 +33,85 @@ sources:
 
   cryptocompare:
     enabled: true
-    api_key: ""  # Опционально
+    api_key: "${CRYPTOCOMPARE_API_KEY}"  # Берется из .env
     base_url: "https://min-api.cryptocompare.com/data"
     interval: 120
+
+  alphavantage:
+    enabled: true
+    api_key: "${ALPHA_VANTAGE_API_KEY}"  # Берется из .env
+    base_url: "https://www.alphavantage.co/query"
+    interval: 300
+
+  reuters:
+    enabled: true
+    api_key: "${REUTERS_API_KEY}"  # Берется из .env
+    base_url: "https://api.reuters.com/v1"
+    interval: 600
+
+  bloomberg:
+    enabled: true
+    api_key: "${BLOOMBERG_API_KEY}"  # Берется из .env
+    base_url: "https://api.bloomberg.com/v1"
+    interval: 600
+
+  cnbc:
+    enabled: true
+    api_key: "${CNBC_API_KEY}"  # Берется из .env
+    base_url: "https://api.cnbc.com/v1"
+    interval: 600
+
+  techcrunch:
+    enabled: true
+    api_key: "${TECHCRUNCH_API_KEY}"  # Берется из .env
+    base_url: "https://api.techcrunch.com/v1"
+    interval: 900
+
+  theverge:
+    enabled: true
+    api_key: "${THEVERGE_API_KEY}"  # Берется из .env
+    base_url: "https://api.theverge.com/v1"
+    interval: 900
+
+  sec:
+    enabled: true
+    api_key: "${SEC_API_KEY}"  # Берется из .env
+    base_url: "https://api.sec.gov"
+    interval: 1800
+
+  cftc:
+    enabled: true
+    api_key: "${CFTC_API_KEY}"  # Берется из .env
+    base_url: "https://api.cftc.gov/v1"
+    interval: 1800
+
+  coingecko:
+    enabled: true
+    api_key: "${COINGECKO_API_KEY}"  # Берется из .env
+    base_url: "https://api.coingecko.com/api/v3"
+    interval: 300
+
+  binance:
+    enabled: true
+    api_key: "${BINANCE_API_KEY}"  # Берется из .env
+    secret_key: "${BINANCE_SECRET_KEY}"  # Берется из .env
+    base_url: "https://api.binance.com/api/v3"
+    interval: 1
+
+  coinbase:
+    enabled: true
+    api_key: "${COINBASE_API_KEY}"  # Берется из .env
+    secret_key: "${COINBASE_SECRET_KEY}"  # Берется из .env
+    base_url: "https://api.coinbase.com/v2"
+    interval: 1
+
+  reddit:
+    enabled: true
+    client_id: "${REDDIT_CLIENT_ID}"  # Берется из .env
+    client_secret: "${REDDIT_CLIENT_SECRET}"  # Берется из .env
+    user_agent: "${REDDIT_USER_AGENT}"  # Берется из .env
+    base_url: "https://oauth.reddit.com"
+    interval: 600
 
   regulatory:
     enabled: true
@@ -114,10 +190,10 @@ urgency:
     market_crash: 2.5
 
 processing:
-  batch_size: 50
-  max_retries: 3
-  timeout: 10
-  max_concurrent_requests: 5
+  batch_size: "${BATCH_SIZE}"  # Берется из .env
+  max_retries: "${MAX_RETRIES}"  # Берется из .env
+  timeout: "${REQUEST_TIMEOUT}"  # Берется из .env
+  max_concurrent_requests: "${MAX_CONCURRENT_REQUESTS}"  # Берется из .env
   
   # Настройки для важных новостей
   important_thresholds:
@@ -134,15 +210,26 @@ notifications:
   
   # Каналы уведомлений
   channels:
-    telegram: false
-    email: false
-    webhook: false
+    telegram: 
+      enabled: true
+      bot_token: "${TELEGRAM_BOT_TOKEN}"  # Берется из .env
+      chat_id: "${TELEGRAM_CHAT_ID}"  # Берется из .env
+    email: 
+      enabled: true
+      smtp_server: "${SMTP_SERVER}"  # Берется из .env
+      smtp_port: "${SMTP_PORT}"  # Берется из .env
+      user: "${EMAIL_USER}"  # Берется из .env
+      password: "${EMAIL_PASSWORD}"  # Берется из .env
+    webhook: 
+      enabled: true
+      url: "${WEBHOOK_URL}"  # Берется из .env
 
 # Настройки мониторинга
 monitoring:
   health_check_interval: 60
-  log_level: "INFO"
+  log_level: "${LOG_LEVEL}"  # Берется из .env
   metrics_enabled: true
+  log_file: "${LOG_FILE}"  # Берется из .env
   
   # Метрики для отслеживания
   metrics:
