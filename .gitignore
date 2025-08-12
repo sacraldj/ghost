@@ -163,3 +163,7 @@ venv.bak/
 ghost_news.db
 *.log
 news_engine_config_local.yaml
+all_api_keys.txt
+*.backup*
+.env.bak
+.env.local.backup*

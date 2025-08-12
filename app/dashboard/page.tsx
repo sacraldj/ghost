@@ -41,6 +41,11 @@ const NewsImpactCorrelation = dynamic(() => import('@/components/NewsImpactCorre
   loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-96" />
 })
 
+const TradingDashboard = dynamic(() => import('@/components/TradingDashboard'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-96" />
+})
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
@@ -157,6 +162,9 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="space-y-8">
+          {/* Live Trading Dashboard - Priority 1 */}
+          <TradingDashboard />
+
           {/* Professional Portfolio Snapshot */}
           <PortfolioSnapshot />
 

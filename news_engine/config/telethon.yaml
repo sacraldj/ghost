@@ -1,0 +1,28 @@
+# GHOST Telethon Configuration
+# Конфигурация для Telegram API
+
+# API credentials - получите на https://my.telegram.org
+api_id: null  # Ваш API ID (число)
+api_hash: null  # Ваш API Hash (строка)
+
+# Session settings
+session_name: "ghost_trader"  # Имя файла сессии
+device_model: "GHOST Trading System"
+system_version: "1.0"
+app_version: "1.0"
+lang_code: "en"
+
+# Connection settings
+connection_retries: 5
+retry_delay: 5
+flood_sleep_threshold: 60
+
+# Как получить API credentials:
+# 1. Перейдите на https://my.telegram.org
+# 2. Войдите с помощью номера телефона
+# 3. Перейдите в "API development tools"
+# 4. Создайте новое приложение
+# 5. Скопируйте api_id и api_hash
+# 6. Добавьте их в переменные окружения:
+#    TELEGRAM_API_ID=your_api_id
+#    TELEGRAM_API_HASH=your_api_hash
