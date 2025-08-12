@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Временно отключаем optimizePackageImports — может провоцировать расхождения чанков
-  // experimental: {
-  //   optimizePackageImports: ['framer-motion', 'recharts', 'lucide-react']
-  // },
+  experimental: {},
   
   // Webpack конфигурация для исправления module loading
   webpack: (config, { dev, isServer }) => {
