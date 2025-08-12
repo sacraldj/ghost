@@ -484,6 +484,22 @@ model NewsPriceImpact {
   @@map("news_price_impact")
 }
 
+// Минимальная таблица трейдов, синхронизируемая с сервера Дарэна в Supabase
+model TradeMin {
+  id        String   @id
+  symbol    String?
+  side      String?
+  openedAt  DateTime? @map("opened_at")
+  closedAt  DateTime? @map("closed_at")
+  pnl       Decimal?  @db.Decimal(20, 8)
+  roi       Decimal?  @db.Decimal(10, 4)
+  tp1Hit    Boolean?  @map("tp1_hit")
+  tp2Hit    Boolean?  @map("tp2_hit")
+  slHit     Boolean?  @map("sl_hit")
+
+  @@map("trades_min")
+}
+
 // Добавляем новые поля к существующей модели NewsEvent
 // В модели NewsEvent добавляем связь с ценовыми данными
 // priceImpacts NewsPriceImpact[] // Новые связи с ценовыми данными
