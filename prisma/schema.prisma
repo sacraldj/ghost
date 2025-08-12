@@ -165,6 +165,7 @@ model Trade {
   
   // ID ордеров
   orderIdExit    String? @map("order_id_exit")
+  orderIdExitFallback String? @map("order_id_exit_fallback")
   signalId       String? @map("signal_id")
   tp1OrderId     String? @map("tp1_order_id")
   tp2OrderId     String? @map("tp2_order_id")
@@ -213,6 +214,7 @@ model Trade {
   roiTp2Real    Decimal? @map("roi_tp2_real") @db.Decimal(10, 4)
   roiSlReal     Decimal? @map("roi_sl_real") @db.Decimal(10, 4)
   roiSlExpected Decimal? @map("roi_sl_expected") @db.Decimal(10, 4)
+  expectedLossSl Decimal? @map("expected_loss_sl") @db.Decimal(20, 8)
   
   // Время достижения целей
   tp1HitTime    DateTime? @map("tp1_hit_time")
