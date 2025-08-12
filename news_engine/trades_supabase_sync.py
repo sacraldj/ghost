@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-GHOST Trades → Supabase Sync (minimal fields)
+GHOST Trades → Supabase Sync (full + minimal)
 
 Purpose:
 - Read trades from a local SQLite database (ghost.db)
 - Derive a small, stable subset of fields for charts
 - Upsert into Supabase table `trades_min`
+- Optionally mirror full table `trades` when FULL_SYNC=1
 
 Environment:
 - NEXT_PUBLIC_SUPABASE_URL
@@ -38,7 +39,7 @@ def get_supabase_client() -> Client | None:
     return create_client(url, key)
 
 
-def read_trades(db_path: str, limit: int = 500) -> List[Dict]:
+def read_trades(db_path: str, limit: int = 500, full: bool = False) -> List[Dict]:
     if not os.path.exists(db_path):
         logger.error(f"SQLite DB not found: {db_path}")
         return []
@@ -56,7 +57,10 @@ def read_trades(db_path: str, limit: int = 500) -> List[Dict]:
         def has(c: str) -> bool:
             return c in cols
 
-        selected = [c for c in [
+        if full:
+            selected = cols  # mirror all columns
+        else:
+            selected = [c for c in [
             "id", "trade_id", "symbol", "side", "entry_price", "exit_price",
             "pnl_net", "pnl_final_real", "roi_percent", "roi_final_real",
             "opened_at", "closed_at", "tp1_hit", "tp2_hit", "sl_hit",
@@ -85,6 +89,9 @@ def read_trades(db_path: str, limit: int = 500) -> List[Dict]:
                 "sl_hit": row.get("sl_hit"),
                 "synced_at": datetime.utcnow().isoformat(),
             }
+            if full:
+                # merge all original columns for full mirror
+                row_out.update(row)
             items.append(row_out)
         logger.info(f"Collected {len(items)} trades from SQLite")
         return items
@@ -106,18 +113,34 @@ def upsert_trades_min(sb: Client, items: List[Dict]) -> None:
         logger.error(f"Upsert error: {e}")
 
 
+def upsert_trades_full(sb: Client, items: List[Dict]) -> None:
+    if not items:
+        return
+    try:
+        CHUNK = 100
+        for i in range(0, len(items), CHUNK):
+            chunk = items[i : i + CHUNK]
+            res = sb.table("trades").upsert(chunk, on_conflict="id").execute()
+            logger.info(f"Upserted FULL {len(chunk)} rows -> {len(res.data or [])}")
+    except Exception as e:
+        logger.error(f"Upsert FULL error: {e}")
+
+
 def main() -> None:
     db_path = os.getenv("GHOST_DB_PATH", "./ghost.db")
     interval = int(os.getenv("SYNC_INTERVAL_SEC", "60"))
     loop = os.getenv("SYNC_LOOP", "1") == "1"
+    full = os.getenv("FULL_SYNC", "0") == "1"
 
     sb = get_supabase_client()
     if sb is None:
         return
 
     def one_pass():
-        items = read_trades(db_path)
+        items = read_trades(db_path, full=full)
         upsert_trades_min(sb, items)
+        if full:
+            upsert_trades_full(sb, items)
 
     if loop:
         logger.info(f"Starting sync loop. DB={db_path} interval={interval}s")
