@@ -3,16 +3,47 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
-import ChatInterface from '@/components/ChatInterface'
-import NewsFeed from '@/components/NewsFeed'
-import SystemMonitor from '@/components/SystemMonitor'
-import SignalsMonitor from '@/components/SignalsMonitor'
-import MarketAnalysisChart from '@/components/MarketAnalysisChart'
-import NewsImpactCorrelation from '@/components/NewsImpactCorrelation'
+import dynamic from 'next/dynamic'
+
+// Динамический импорт компонентов
+const PortfolioSnapshot = dynamic(() => import('@/components/PortfolioSnapshot'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-96" />
+})
+
+const ChatInterface = dynamic(() => import('@/components/ChatInterface'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-64" />
+})
+
+const NewsFeed = dynamic(() => import('@/components/NewsFeed'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-64" />
+})
+
+const SystemMonitor = dynamic(() => import('@/components/SystemMonitor'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-64" />
+})
+
+const SignalsMonitor = dynamic(() => import('@/components/SignalsMonitor'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-64" />
+})
+
+const MarketAnalysisChart = dynamic(() => import('@/components/MarketAnalysisChart'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-96" />
+})
+
+const NewsImpactCorrelation = dynamic(() => import('@/components/NewsImpactCorrelation'), { 
+  ssr: false,
+  loading: () => <div className="glass rounded-xl p-6 animate-pulse bg-gray-800/20 h-96" />
+})
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
 )
 
 export default function Dashboard() {
@@ -34,9 +65,19 @@ export default function Dashboard() {
   }, [])
 
   const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    setUser(session?.user || null)
-    setLoading(false)
+    try {
+      if (!supabase) {
+        setLoading(false)
+        return
+      }
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      setUser(session?.user || null)
+      setLoading(false)
+    } catch (error) {
+      console.error('Auth check error:', error)
+      setLoading(false)
+    }
   }
 
   const loadUserData = async () => {
@@ -53,8 +94,15 @@ export default function Dashboard() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/auth')
+    try {
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
+      router.push('/auth')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      router.push('/auth')
+    }
   }
 
   const handleSignIn = () => {
@@ -109,32 +157,35 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="space-y-8">
-          {/* Portfolio Overview */}
-          <div className="grid md:grid-cols-4 gap-6">
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Общий баланс</h3>
-              <p className="text-3xl font-bold text-white">$12,450.75</p>
-              <p className="text-green-400 text-sm">+$1,250.30 (+11.2%)</p>
+          {/* Professional Portfolio Snapshot */}
+          <PortfolioSnapshot />
+
+          {/* Market Analysis Chart - Professional View */}
+          <MarketAnalysisChart />
+
+          {/* News Impact Correlation Analysis */}
+          <NewsImpactCorrelation />
+
+          {/* Secondary Panels Grid */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* System Monitor */}
+            <div className="lg:col-span-1">
+              <SystemMonitor />
             </div>
-            
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Общий P&L</h3>
-              <p className="text-3xl font-bold text-green-400">+$2,340.50</p>
-              <p className="text-gray-400 text-sm">За последние 30 дней</p>
+
+            {/* Trading Signals Monitor */}
+            <div className="lg:col-span-1">
+              <SignalsMonitor />
             </div>
-            
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Винрейт</h3>
-              <p className="text-3xl font-bold text-white">68.5%</p>
-              <p className="text-gray-400 text-sm">24 из 35 сделок</p>
-            </div>
-            
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Активные позиции</h3>
-              <p className="text-3xl font-bold text-white">3</p>
-              <p className="text-gray-400 text-sm">Общий риск: $450</p>
+
+            {/* News Feed */}
+            <div className="lg:col-span-1">
+              <NewsFeed />
             </div>
           </div>
+
+          {/* Chat Interface */}
+          <ChatInterface />
 
           {/* Market Overview */}
           <div className="grid md:grid-cols-2 gap-6">

@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
 )
 
 export default function Home() {
@@ -17,10 +17,20 @@ export default function Home() {
   }, [])
 
   const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session) {
-      router.push('/dashboard')
-    } else {
+    try {
+      if (!supabase) {
+        router.push('/auth')
+        return
+      }
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push('/dashboard')
+      } else {
+        router.push('/auth')
+      }
+    } catch (error) {
+      console.error('Auth check error:', error)
       router.push('/auth')
     }
   }

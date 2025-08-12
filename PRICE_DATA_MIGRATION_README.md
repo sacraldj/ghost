@@ -212,3 +212,5 @@ DROP COLUMN IF EXISTS is_market_moving;
 
 
 
+
+
