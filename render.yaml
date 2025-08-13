@@ -1,54 +1,25 @@
-# Render.com deployment configuration for GHOST Python engines
+# Render.com deployment configuration for GHOST All-in-One Engine
 services:
-  # Telegram Parser Service
+  # Unified Service for All GHOST Engines
   - type: web
-    name: whales-telegram-parser
+    name: ghost-all-engines
     env: python
     repo: https://github.com/sacraldj/ghost.git
-    buildCommand: "pip install -r telegram_parsers/requirements.txt"
-    startCommand: "python telegram_parsers/whales_guide_listener.py"
+    branch: main
+    buildCommand: "pip install -r requirements.txt && pip install -r telegram_parsers/requirements.txt"
+    startCommand: "python3 start_all.py"
     plan: free
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: PORT
+        value: "8000"
       - key: TELEGRAM_API_ID
         sync: false
       - key: TELEGRAM_API_HASH
         sync: false
       - key: TELEGRAM_PHONE
         sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-  
-  # Signal Orchestrator Service
-  - type: web
-    name: signal-orchestrator
-    env: python
-    repo: https://github.com/sacraldj/ghost.git
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python signals/signal_orchestrator.py"
-    plan: free
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-  
-  # News Engine Service  
-  - type: web
-    name: news-engine
-    env: python
-    repo: https://github.com/sacraldj/ghost.git
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python news_engine/enhanced_news_engine.py"
-    plan: free
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
