@@ -506,6 +506,191 @@ model TradeMin {
 // В модели NewsEvent добавляем связь с ценовыми данными
 // priceImpacts NewsPriceImpact[] // Новые связи с ценовыми данными
 
+// ========================================
+// TRADER OBSERVATION SYSTEM MODELS
+// ========================================
+
+// Реестр трейдеров
+model TraderRegistry {
+  traderId       String   @id @map("trader_id")
+  name           String
+  sourceType     String   @map("source_type") // telegram, discord, twitter, rss
+  sourceId       String?  @map("source_id")   // chat_id, handle, etc
+  sourceHandle   String?  @map("source_handle") // @username
+  mode           String   @default("observe")   // observe | paper | live
+  riskProfile    Json?    @map("risk_profile")  // {size_usd: 100, leverage: 10}
+  parsingProfile String   @default("standard_v1") @map("parsing_profile")
+  isActive       Boolean  @default(true) @map("is_active")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Связи
+  signalsRaw     SignalRaw[]
+  signalsParsed  SignalParsed[]
+  signalOutcomes SignalOutcome[]
+  paperTrades    PaperTrade[]
+  statsDaily     TraderStatsDaily[]
+
+  @@map("trader_registry")
+}
+
+// Сырые сигналы (необработанные)
+model SignalRaw {
+  rawId         Int      @id @default(autoincrement()) @map("raw_id")
+  traderId      String   @map("trader_id")
+  sourceMsgId   String?  @map("source_msg_id")
+  postedAt      DateTime @map("posted_at")
+  text          String
+  meta          Json?
+  processed     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Связи
+  trader        TraderRegistry @relation(fields: [traderId], references: [traderId])
+  signalsParsed SignalParsed[]
+
+  @@map("signals_raw")
+}
+
+// Обработанные сигналы (нормализованные)
+model SignalParsed {
+  signalId       Int      @id @default(autoincrement()) @map("signal_id")
+  traderId       String   @map("trader_id")
+  rawId          Int?     @map("raw_id")
+  postedAt       DateTime @map("posted_at")
+  symbol         String
+  side           String   // BUY, SELL
+  entryType      String?  @map("entry_type") // market, limit, range
+  entry          Decimal? @db.Decimal(20, 8)
+  rangeLow       Decimal? @map("range_low") @db.Decimal(20, 8)
+  rangeHigh      Decimal? @map("range_high") @db.Decimal(20, 8)
+  tp1            Decimal? @db.Decimal(20, 8)
+  tp2            Decimal? @db.Decimal(20, 8)
+  tp3            Decimal? @db.Decimal(20, 8)
+  tp4            Decimal? @db.Decimal(20, 8)
+  sl             Decimal? @db.Decimal(20, 8)
+  leverageHint   Int?     @map("leverage_hint")
+  timeframeHint  String?  @map("timeframe_hint")
+  confidence     Decimal? @db.Decimal(5, 2)
+  parsedAt       DateTime @default(now()) @map("parsed_at")
+  parseVersion   String   @default("v1.0") @map("parse_version")
+  checksum       String   @unique
+  isValid        Boolean  @default(true) @map("is_valid")
+
+  // Связи
+  trader         TraderRegistry @relation(fields: [traderId], references: [traderId])
+  rawSignal      SignalRaw?     @relation(fields: [rawId], references: [rawId])
+  outcome        SignalOutcome?
+  paperTrade     PaperTrade?
+
+  @@map("signals_parsed")
+}
+
+// Свечи для проверки исходов (дополнительная таблица для trader observation)
+model TraderCandle {
+  symbol      String   @map("symbol")
+  timeframe   String   @map("timeframe") // 1m, 5m, 15m, 1h
+  openTime    DateTime @map("open_time")
+  openPrice   Decimal  @map("open_price") @db.Decimal(20, 8)
+  highPrice   Decimal  @map("high_price") @db.Decimal(20, 8)
+  lowPrice    Decimal  @map("low_price") @db.Decimal(20, 8)
+  closePrice  Decimal  @map("close_price") @db.Decimal(20, 8)
+  volume      Decimal? @db.Decimal(20, 8)
+  vwap        Decimal? @db.Decimal(20, 8)
+  tradesCount Int?     @map("trades_count")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@id([symbol, timeframe, openTime], map: "trader_candles_pkey")
+  @@index([symbol, timeframe, openTime])
+  @@map("trader_candles")
+}
+
+// Исходы сигналов (результаты симуляции)
+model SignalOutcome {
+  signalId           Int      @id @map("signal_id")
+  traderId           String   @map("trader_id")
+  entryExecPriceSim  Decimal? @map("entry_exec_price_sim") @db.Decimal(20, 8)
+  tp1HitAt           DateTime? @map("tp1_hit_at")
+  tp2HitAt           DateTime? @map("tp2_hit_at")
+  tp3HitAt           DateTime? @map("tp3_hit_at")
+  slHitAt            DateTime? @map("sl_hit_at")
+  maxFavorable       Decimal  @default(0) @map("max_favorable") @db.Decimal(20, 8)
+  maxAdverse         Decimal  @default(0) @map("max_adverse") @db.Decimal(20, 8)
+  durationToTp1Min   Int?     @map("duration_to_tp1_min")
+  durationToTp2Min   Int?     @map("duration_to_tp2_min")
+  finalResult        String   @map("final_result") // TP1_ONLY, TP2_FULL, SL, BE, TIMEOUT, NOFILL
+  pnlSim             Decimal  @default(0) @map("pnl_sim") @db.Decimal(20, 8)
+  roiSim             Decimal  @default(0) @map("roi_sim") @db.Decimal(10, 4)
+  feeSim             Decimal  @default(0) @map("fee_sim") @db.Decimal(20, 8)
+  calcMode           String   @default("candles") @map("calc_mode")
+  simulationVersion  String   @default("v1.0") @map("simulation_version")
+  calculatedAt       DateTime @default(now()) @map("calculated_at")
+
+  // Связи
+  trader             TraderRegistry @relation(fields: [traderId], references: [traderId])
+  signal             SignalParsed   @relation(fields: [signalId], references: [signalId])
+
+  @@map("signal_outcomes")
+}
+
+// Paper торги (симуляция исполнения)
+model PaperTrade {
+  paperTradeId     Int      @id @default(autoincrement()) @map("paper_trade_id")
+  signalId         Int      @unique @map("signal_id")
+  traderId         String   @map("trader_id")
+  symbol           String
+  side             String
+  openedAt         DateTime @default(now()) @map("opened_at")
+  entryPriceSim    Decimal? @map("entry_price_sim") @db.Decimal(20, 8)
+  positionSize     Decimal? @map("position_size") @db.Decimal(20, 8)
+  marginUsed       Decimal? @map("margin_used") @db.Decimal(20, 8)
+  leverage         Int?
+  tp1Price         Decimal? @map("tp1_price") @db.Decimal(20, 8)
+  tp2Price         Decimal? @map("tp2_price") @db.Decimal(20, 8)
+  slPrice          Decimal? @map("sl_price") @db.Decimal(20, 8)
+  closesJson       Json?    @map("closes_json") // [{type: 'tp1', price: X, qty: Y, at: timestamp}]
+  pnlSimFinal      Decimal? @map("pnl_sim_final") @db.Decimal(20, 8)
+  roiSimFinal      Decimal? @map("roi_sim_final") @db.Decimal(10, 4)
+  status           String   @default("open") // open, partial, closed
+  closedAt         DateTime? @map("closed_at")
+
+  // Связи
+  trader           TraderRegistry @relation(fields: [traderId], references: [traderId])
+  signal           SignalParsed   @relation(fields: [signalId], references: [signalId])
+
+  @@map("paper_trades")
+}
+
+// Дневная статистика трейдеров
+model TraderStatsDaily {
+  date               DateTime @map("date")
+  traderId           String   @map("trader_id")
+  signalsCount       Int      @default(0) @map("signals_count")
+  validSignals       Int      @default(0) @map("valid_signals")
+  executedSignals    Int      @default(0) @map("executed_signals")
+  winrate            Decimal? @db.Decimal(5, 2)
+  tp1Rate            Decimal? @map("tp1_rate") @db.Decimal(5, 2)
+  tp2Rate            Decimal? @map("tp2_rate") @db.Decimal(5, 2)
+  slRate             Decimal? @map("sl_rate") @db.Decimal(5, 2)
+  avgRr              Decimal? @map("avg_rr") @db.Decimal(10, 4)
+  avgDurationToTp1Min Int?    @map("avg_duration_to_tp1_min")
+  avgDurationToTp2Min Int?    @map("avg_duration_to_tp2_min")
+  pnlSimSum          Decimal? @map("pnl_sim_sum") @db.Decimal(20, 8)
+  maxDrawdownSim     Decimal? @map("max_drawdown_sim") @db.Decimal(20, 8)
+  sharpeLike         Decimal? @map("sharpe_like") @db.Decimal(10, 4)
+  expectancy         Decimal? @db.Decimal(10, 4)
+  stabilityIndex     Decimal? @map("stability_index") @db.Decimal(5, 2)
+  last30dPerf        Decimal? @map("last_30d_perf") @db.Decimal(10, 4)
+  last90dPerf        Decimal? @map("last_90d_perf") @db.Decimal(10, 4)
+
+  // Связи
+  trader             TraderRegistry @relation(fields: [traderId], references: [traderId])
+
+  @@id([date, traderId])
+  @@map("trader_stats_daily")
+}
+
 // Добавляем новые поля к существующей модели CriticalNews
 // В модели CriticalNews добавляем поля для связи с ценовыми данными:
 // symbol          String? // Символ, к которому относится новость

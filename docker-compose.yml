@@ -1,0 +1,57 @@
+# Docker Compose для локальной разработки и Fly.io
+version: '3.8'
+
+services:
+  # Telegram Parser
+  telegram-parser:
+    build: 
+      context: .
+      dockerfile: Dockerfile.telegram
+    container_name: ghost-telegram-parser
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+      - TELEGRAM_PHONE=${TELEGRAM_PHONE}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    volumes:
+      - telegram_sessions:/app/sessions
+    networks:
+      - ghost-network
+
+  # Signal Orchestrator
+  signal-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.signals
+    container_name: ghost-signal-orchestrator
+    restart: unless-stopped
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - telegram-parser
+    networks:
+      - ghost-network
+
+  # News Engine
+  news-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.news
+    container_name: ghost-news-engine
+    restart: unless-stopped
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - NEWS_API_KEY=${NEWS_API_KEY}
+    networks:
+      - ghost-network
+
+volumes:
+  telegram_sessions:
+
+networks:
+  ghost-network:
+    driver: bridge

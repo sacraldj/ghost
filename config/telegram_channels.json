@@ -1,0 +1,106 @@
+{
+  "channels": [
+    {
+      "channel_id": "",
+      "channel_name": "Crypto Hub VIP",
+      "trader_id": "crypto_hub_vip",
+      "is_active": true,
+      "description": "Premium crypto signals channel",
+      "keywords_filter": [
+        "longing",
+        "shorting", 
+        "entry:",
+        "targets:",
+        "stoploss:",
+        "long (",
+        "short ("
+      ],
+      "exclude_keywords": [
+        "test",
+        "admin",
+        "maintenance",
+        "demo"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "crypto_hub_v1"
+    },
+    {
+      "channel_id": "",
+      "channel_name": "2Trade Premium",
+      "trader_id": "2trade_premium",
+      "is_active": true,
+      "description": "Structured trading signals",
+      "keywords_filter": [
+        "pair:",
+        "direction:",
+        "entry:",
+        "tp1:",
+        "sl:",
+        "leverage:"
+      ],
+      "exclude_keywords": [
+        "test",
+        "demo",
+        "practice"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "2trade_v1"
+    },
+    {
+      "channel_id": "",
+      "channel_name": "Binance Killers",
+      "trader_id": "binance_killers",
+      "is_active": false,
+      "description": "High-frequency trading signals",
+      "keywords_filter": [
+        "#",
+        "long",
+        "short",
+        "buy",
+        "sell"
+      ],
+      "exclude_keywords": [
+        "news",
+        "update",
+        "announcement"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "adaptive_v1"
+    },
+    {
+      "channel_id": "",
+      "channel_name": "CoinPulse VIP",
+      "trader_id": "coinpulse_vip",
+      "is_active": false,
+      "description": "Market analysis with signals",
+      "keywords_filter": [
+        "signal",
+        "entry",
+        "target",
+        "stop"
+      ],
+      "exclude_keywords": [
+        "analysis only",
+        "educational"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "coinpulse_v1"
+    }
+  ],
+  "global_settings": {
+    "max_message_age_hours": 2,
+    "min_confidence_threshold": 70,
+    "auto_register_traders": true,
+    "save_raw_messages": true,
+    "anti_spam_interval_seconds": 30
+  },
+  "telegram_api": {
+    "session_name": "ghost_telegram_session",
+    "flood_sleep_threshold": 60,
+    "device_model": "GHOST System",
+    "system_version": "1.0.0",
+    "app_version": "1.0.0",
+    "lang_code": "en",
+    "system_lang_code": "en"
+  }
+}

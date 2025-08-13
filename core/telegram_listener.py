@@ -1,585 +1,385 @@
-#!/usr/bin/env python3
 """
-GHOST Telegram Listener - Прослушивание торговых сигналов
-Модуль для мониторинга торговых каналов в Telegram и извлечения сигналов
-
-Функции:
-- Подключение к множественным Telegram каналам
-- Парсинг торговых сигналов в реальном времени
-- Классификация и валидация сигналов
-- Сохранение в базу данных и очередь обработки
-- Метрики и статистика по трейдерам
+GHOST Telegram Listener
+Подключение к Telegram каналам для сбора сигналов
+На основе архитектуры core/telegram_listener.py системы Дарена
 """
 
 import asyncio
-import json
 import logging
+import json
 import os
-import re
-import sys
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, asdict
-import yaml
-import aioredis
+from datetime import datetime
+from typing import Dict, List, Optional, Any, Set
+from dataclasses import dataclass
+
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat
-import sqlite3
-import traceback
 
-# Добавляем путь к утилитам
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.signal_router import route_signal
+from core.trader_registry import TraderRegistry
 
-try:
-    from utils.ghost_logger import log_info, log_warning, log_error
-    from utils.database_manager import DatabaseManager
-except ImportError as e:
-    print(f"Warning: Could not import utils: {e}")
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/telegram_listener.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger('TelegramListener')
-
-@dataclass
-class TradingSignal:
-    """Структура торгового сигнала"""
-    id: str
-    channel_id: str
-    channel_name: str
-    trader_name: str
-    message_id: int
-    timestamp: datetime
-    
-    # Основные параметры сигнала
-    symbol: str
-    direction: str  # LONG, SHORT
-    entry_zone: List[float]  # Зона входа
-    tp_levels: List[float]   # Take Profit уровни
-    sl_level: float          # Stop Loss
-    
-    # Дополнительные данные
-    leverage: Optional[int] = None
-    risk_percent: Optional[float] = None
-    confidence: Optional[float] = None
-    
-    # Мета-информация
-    original_text: str = ""
-    parsed_data: Dict[str, Any] = None
-    validation_status: str = "pending"  # pending, valid, invalid
-    validation_errors: List[str] = None
-    
-    # Статистика трейдера
-    trader_stats: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.parsed_data is None:
-            self.parsed_data = {}
-        if self.validation_errors is None:
-            self.validation_errors = []
-        if self.trader_stats is None:
-            self.trader_stats = {}
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ChannelConfig:
-    """Конфигурация канала"""
-    id: Union[str, int]
-    name: str
-    trader_name: str
-    enabled: bool = True
-    signal_patterns: List[str] = None
-    parser_type: str = "default"  # default, custom_parser_name
-    priority: int = 1  # 1-5, чем выше - тем важнее
-    min_confidence: float = 0.7
+    """Конфигурация канала для мониторинга"""
+    channel_id: str
+    channel_name: str
+    trader_id: str
+    is_active: bool = True
+    keywords_filter: List[str] = None
+    exclude_keywords: List[str] = None
     
     def __post_init__(self):
-        if self.signal_patterns is None:
-            self.signal_patterns = []
-
-class SignalParser:
-    """Базовый парсер торговых сигналов"""
-    
-    def __init__(self):
-        # Регулярные выражения для парсинга
-        self.symbol_pattern = re.compile(r'([A-Z]+/USDT|[A-Z]+USDT)', re.IGNORECASE)
-        self.direction_pattern = re.compile(r'(LONG|SHORT|BUY|SELL)', re.IGNORECASE)
-        self.entry_pattern = re.compile(r'(?:Entry|Вход|ENTRY)[\s:]*([0-9.,\-\s]+)', re.IGNORECASE)
-        self.tp_pattern = re.compile(r'(?:TP|Take\s*Profit|Цель)[\s:]*([0-9.,\-\s]+)', re.IGNORECASE)
-        self.sl_pattern = re.compile(r'(?:SL|Stop\s*Loss|Стоп)[\s:]*([0-9.,\-\s]+)', re.IGNORECASE)
-        self.leverage_pattern = re.compile(r'(?:Leverage|Плечо)[\s:]*(\d+)[xXх]?', re.IGNORECASE)
-    
-    def parse_signal(self, text: str, channel_name: str, trader_name: str) -> Optional[Dict[str, Any]]:
-        """Парсинг торгового сигнала из текста"""
-        try:
-            signal_data = {}
-            
-            # Извлечение символа
-            symbol_match = self.symbol_pattern.search(text)
-            if symbol_match:
-                symbol = symbol_match.group(1).upper()
-                # Нормализация символа
-                if not symbol.endswith('USDT'):
-                    symbol = symbol.replace('/', '') + 'USDT'
-                signal_data['symbol'] = symbol
-            else:
-                return None  # Без символа сигнал невалиден
-            
-            # Определение направления
-            direction_match = self.direction_pattern.search(text)
-            if direction_match:
-                direction = direction_match.group(1).upper()
-                if direction in ['BUY', 'LONG']:
-                    signal_data['direction'] = 'LONG'
-                elif direction in ['SELL', 'SHORT']:
-                    signal_data['direction'] = 'SHORT'
-            else:
-                return None  # Без направления сигнал невалиден
-            
-            # Извлечение зоны входа
-            entry_match = self.entry_pattern.search(text)
-            if entry_match:
-                entry_text = entry_match.group(1)
-                signal_data['entry_zone'] = self._parse_numbers(entry_text)
-            
-            # Извлечение TP уровней
-            tp_matches = self.tp_pattern.findall(text)
-            if tp_matches:
-                tp_levels = []
-                for tp_text in tp_matches:
-                    tp_levels.extend(self._parse_numbers(tp_text))
-                signal_data['tp_levels'] = tp_levels
-            
-            # Извлечение SL
-            sl_match = self.sl_pattern.search(text)
-            if sl_match:
-                sl_numbers = self._parse_numbers(sl_match.group(1))
-                if sl_numbers:
-                    signal_data['sl_level'] = sl_numbers[0]
-            
-            # Извлечение плеча
-            leverage_match = self.leverage_pattern.search(text)
-            if leverage_match:
-                signal_data['leverage'] = int(leverage_match.group(1))
-            
-            # Расчёт уверенности на основе полноты данных
-            confidence = self._calculate_confidence(signal_data)
-            signal_data['confidence'] = confidence
-            
-            return signal_data if confidence >= 0.5 else None
-            
-        except Exception as e:
-            logger.error(f"Error parsing signal: {e}")
-            return None
-    
-    def _parse_numbers(self, text: str) -> List[float]:
-        """Извлечение чисел из текста"""
-        numbers = []
-        # Удаляем лишние символы и разделяем
-        clean_text = re.sub(r'[^\d.,\-\s]', ' ', text)
-        
-        for num_str in clean_text.split():
-            try:
-                # Обработка различных форматов чисел
-                num_str = num_str.replace(',', '.')
-                if '-' in num_str and num_str.count('-') == 1:
-                    # Диапазон чисел (например, 1.5-1.6)
-                    parts = num_str.split('-')
-                    if len(parts) == 2:
-                        numbers.append(float(parts[0]))
-                        numbers.append(float(parts[1]))
-                else:
-                    numbers.append(float(num_str))
-            except ValueError:
-                continue
-        
-        return numbers
-    
-    def _calculate_confidence(self, signal_data: Dict[str, Any]) -> float:
-        """Расчёт уверенности в сигнале"""
-        score = 0.0
-        
-        # Обязательные поля
-        if 'symbol' in signal_data:
-            score += 0.3
-        if 'direction' in signal_data:
-            score += 0.3
-        
-        # Желательные поля
-        if 'entry_zone' in signal_data and signal_data['entry_zone']:
-            score += 0.2
-        if 'tp_levels' in signal_data and signal_data['tp_levels']:
-            score += 0.15
-        if 'sl_level' in signal_data:
-            score += 0.05
-        
-        return min(1.0, score)
+        if self.keywords_filter is None:
+            self.keywords_filter = []
+        if self.exclude_keywords is None:
+            self.exclude_keywords = []
 
 class TelegramListener:
-    """Основной класс для прослушивания Telegram каналов"""
+    """Слушатель Telegram каналов"""
     
-    def __init__(self, config_path: str = "config/telegram_config.yaml"):
-        self.config_path = config_path
-        self.config = {}
-        self.channels: Dict[str, ChannelConfig] = {}
+    def __init__(self, api_id: str, api_hash: str, phone: str = None):
+        self.api_id = api_id
+        self.api_hash = api_hash
+        self.phone = phone
+        
+        # Telegram клиент
         self.client: Optional[TelegramClient] = None
-        self.redis: Optional[aioredis.Redis] = None
-        self.db_manager: Optional[DatabaseManager] = None
-        self.signal_parser = SignalParser()
+        
+        # Конфигурация каналов
+        self.channels: Dict[str, ChannelConfig] = {}
         
         # Статистика
         self.stats = {
-            'messages_processed': 0,
-            'signals_found': 0,
-            'signals_valid': 0,
-            'signals_invalid': 0,
-            'start_time': datetime.utcnow()
+            'messages_received': 0,
+            'signals_detected': 0,
+            'signals_parsed': 0,
+            'by_channel': {}
         }
         
-        # Состояние
-        self.running = False
-        self.last_health_check = datetime.utcnow()
+        # Фильтры
+        self.global_signal_keywords = [
+            'long', 'short', 'buy', 'sell', 'entry', 'target', 'tp1', 'tp2', 'tp3', 'sl', 'stop',
+            'лонг', 'шорт', 'покупка', 'продажа', 'вход', 'цель', 'стоп'
+        ]
+        
+        # Обработанные сообщения (анти-дубликаты)
+        self.processed_messages: Set[str] = set()
+        
+        logger.info("Telegram Listener initialized")
     
     async def initialize(self):
-        """Инициализация Telegram Listener"""
-        logger.info("🚀 Initializing Telegram Listener...")
-        
-        try:
-            # Загрузка конфигурации
-            await self._load_config()
-            
-            # Инициализация Telegram клиента
-            await self._init_telegram_client()
-            
-            # Подключение к Redis
-            await self._init_redis()
-            
-            # Инициализация базы данных
-            await self._init_database()
-            
-            logger.info("✅ Telegram Listener initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize Telegram Listener: {e}")
-            raise
-    
-    async def _load_config(self):
-        """Загрузка конфигурации"""
-        try:
-            if os.path.exists(self.config_path):
-                with open(self.config_path, 'r', encoding='utf-8') as f:
-                    self.config = yaml.safe_load(f)
-            else:
-                # Создаём базовую конфигурацию
-                self.config = self._get_default_config()
-                os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-                with open(self.config_path, 'w', encoding='utf-8') as f:
-                    yaml.dump(self.config, f, default_flow_style=False)
-                logger.info(f"Created default config at {self.config_path}")
-            
-            # Загрузка каналов
-            for channel_data in self.config.get('channels', []):
-                channel_config = ChannelConfig(**channel_data)
-                self.channels[str(channel_config.id)] = channel_config
-                
-            logger.info(f"Loaded {len(self.channels)} channels")
-            
-        except Exception as e:
-            logger.error(f"Failed to load config: {e}")
-            raise
-    
-    def _get_default_config(self) -> Dict[str, Any]:
-        """Конфигурация по умолчанию"""
-        return {
-            'telegram': {
-                'api_id': os.getenv('TELEGRAM_API_ID'),
-                'api_hash': os.getenv('TELEGRAM_API_HASH'),
-                'session_name': 'ghost_listener'
-            },
-            'redis': {
-                'url': 'redis://localhost:6379/1',
-                'enabled': True
-            },
-            'database': {
-                'signals_table': 'trading_signals',
-                'traders_table': 'trader_stats'
-            },
-            'channels': [
-                # Примеры каналов (заполнить реальными данными)
-                {
-                    'id': '@example_signals',
-                    'name': 'Example Signals',
-                    'trader_name': 'ExampleTrader',
-                    'enabled': False,  # Отключено по умолчанию
-                    'parser_type': 'default',
-                    'priority': 3
-                }
-            ],
-            'parsing': {
-                'min_confidence': 0.7,
-                'save_all_signals': True,
-                'save_invalid_signals': False
-            }
-        }
-    
-    async def _init_telegram_client(self):
         """Инициализация Telegram клиента"""
         try:
-            telegram_config = self.config['telegram']
-            api_id = telegram_config['api_id']
-            api_hash = telegram_config['api_hash']
-            session_name = telegram_config['session_name']
+            # Создаем клиент
+            self.client = TelegramClient('ghost_session', self.api_id, self.api_hash)
             
-            if not api_id or not api_hash:
-                raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH must be set")
+            # Подключаемся
+            await self.client.start(phone=self.phone)
             
-            self.client = TelegramClient(session_name, api_id, api_hash)
-            await self.client.start()
-            
-            logger.info("✅ Telegram client connected")
-            
+            # Проверяем авторизацию
+            if await self.client.is_user_authorized():
+                me = await self.client.get_me()
+                logger.info(f"Telegram client authorized as: {me.first_name} (@{me.username})")
+                return True
+            else:
+                logger.error("Telegram client not authorized")
+                return False
+                
         except Exception as e:
-            logger.error(f"Failed to initialize Telegram client: {e}")
-            raise
+            logger.error(f"Error initializing Telegram client: {e}")
+            return False
     
-    async def _init_redis(self):
-        """Инициализация Redis"""
-        if not self.config.get('redis', {}).get('enabled', False):
-            logger.info("Redis disabled in config")
-            return
-            
-        try:
-            redis_url = self.config['redis']['url']
-            self.redis = await aioredis.from_url(redis_url)
-            await self.redis.ping()
-            logger.info("✅ Redis connected")
-        except Exception as e:
-            logger.warning(f"⚠️ Redis connection failed: {e}")
-            self.redis = None
+    def add_channel(self, channel_config: ChannelConfig):
+        """Добавление канала для мониторинга"""
+        self.channels[channel_config.channel_id] = channel_config
+        self.stats['by_channel'][channel_config.channel_id] = {
+            'messages': 0,
+            'signals': 0,
+            'name': channel_config.channel_name
+        }
+        logger.info(f"Added channel: {channel_config.channel_name} (ID: {channel_config.channel_id})")
     
-    async def _init_database(self):
-        """Инициализация базы данных"""
+    def load_channels_from_config(self, config_path: str):
+        """Загрузка каналов из конфигурационного файла"""
         try:
-            # В будущем здесь будет DatabaseManager
-            # self.db_manager = DatabaseManager()
-            # await self.db_manager.initialize()
-            logger.info("✅ Database manager initialized")
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                for channel_data in config_data.get('channels', []):
+                    config = ChannelConfig(
+                        channel_id=channel_data['channel_id'],
+                        channel_name=channel_data['channel_name'],
+                        trader_id=channel_data['trader_id'],
+                        is_active=channel_data.get('is_active', True),
+                        keywords_filter=channel_data.get('keywords_filter', []),
+                        exclude_keywords=channel_data.get('exclude_keywords', [])
+                    )
+                    self.add_channel(config)
+                
+                logger.info(f"Loaded {len(self.channels)} channels from config")
+            
+            else:
+                logger.warning(f"Config file not found: {config_path}")
+                
         except Exception as e:
-            logger.error(f"❌ Database initialization failed: {e}")
+            logger.error(f"Error loading channels config: {e}")
     
     async def start_listening(self):
         """Запуск прослушивания каналов"""
-        logger.info("🎧 Starting Telegram channels listening...")
-        self.running = True
+        if not self.client:
+            logger.error("Telegram client not initialized")
+            return
         
-        try:
-            # Регистрация обработчиков событий
-            await self._register_event_handlers()
-            
-            # Основной цикл
-            await self._main_loop()
-            
-        except Exception as e:
-            logger.error(f"❌ Listening error: {e}")
-            raise
-        finally:
-            await self.shutdown()
-    
-    async def _register_event_handlers(self):
-        """Регистрация обработчиков сообщений"""
-        @self.client.on(events.NewMessage)
+        if not self.channels:
+            logger.warning("No channels configured for listening")
+            return
+        
+        logger.info(f"Starting to listen to {len(self.channels)} channels...")
+        
+        # Подписываемся на новые сообщения
+        @self.client.on(events.NewMessage())
         async def handle_new_message(event):
-            await self._process_message(event)
+            await self._handle_message(event)
         
-        logger.info("📡 Event handlers registered")
+        # Держим клиент активным
+        try:
+            await self.client.run_until_disconnected()
+        except Exception as e:
+            logger.error(f"Error in Telegram listener: {e}")
+            raise
     
-    async def _process_message(self, event):
+    async def _handle_message(self, event):
         """Обработка нового сообщения"""
         try:
-            self.stats['messages_processed'] += 1
+            # Получаем информацию о чате
+            chat = await event.get_chat()
             
-            # Получение информации о канале
-            chat_id = str(event.chat_id)
+            # Определяем ID канала
+            if hasattr(chat, 'id'):
+                chat_id = str(chat.id)
+            else:
+                return
             
-            # Проверка что канал в нашем списке
+            # Проверяем, мониторим ли мы этот канал
             if chat_id not in self.channels:
                 return
             
             channel_config = self.channels[chat_id]
-            if not channel_config.enabled:
+            
+            # Проверяем, активен ли канал
+            if not channel_config.is_active:
                 return
             
-            # Получение текста сообщения
-            message_text = event.message.message
+            # Получаем текст сообщения
+            message_text = event.message.text
             if not message_text:
                 return
             
-            # Парсинг сигнала
-            parsed_data = self.signal_parser.parse_signal(
-                message_text, 
-                channel_config.name, 
-                channel_config.trader_name
-            )
+            # Генерируем уникальный ID сообщения для анти-дубликатов
+            message_id = f"{chat_id}_{event.message.id}"
+            if message_id in self.processed_messages:
+                return
             
-            if parsed_data:
-                # Создание сигнала
-                signal = TradingSignal(
-                    id=f"{chat_id}_{event.message.id}_{int(datetime.utcnow().timestamp())}",
-                    channel_id=chat_id,
-                    channel_name=channel_config.name,
-                    trader_name=channel_config.trader_name,
-                    message_id=event.message.id,
-                    timestamp=datetime.utcnow(),
-                    symbol=parsed_data['symbol'],
-                    direction=parsed_data['direction'],
-                    entry_zone=parsed_data.get('entry_zone', []),
-                    tp_levels=parsed_data.get('tp_levels', []),
-                    sl_level=parsed_data.get('sl_level'),
-                    leverage=parsed_data.get('leverage'),
-                    confidence=parsed_data.get('confidence', 0.0),
-                    original_text=message_text,
-                    parsed_data=parsed_data
-                )
-                
-                # Валидация сигнала
-                await self._validate_signal(signal)
-                
-                # Сохранение сигнала
-                await self._save_signal(signal)
-                
-                self.stats['signals_found'] += 1
-                if signal.validation_status == 'valid':
-                    self.stats['signals_valid'] += 1
-                else:
-                    self.stats['signals_invalid'] += 1
-                
-                logger.info(f"📈 Signal processed: {signal.symbol} {signal.direction} "
-                           f"from {signal.trader_name} (confidence: {signal.confidence:.2f})")
+            self.processed_messages.add(message_id)
+            
+            # Обновляем статистику
+            self.stats['messages_received'] += 1
+            self.stats['by_channel'][chat_id]['messages'] += 1
+            
+            logger.debug(f"New message from {channel_config.channel_name}: {message_text[:100]}...")
+            
+            # Проверяем фильтры
+            if not self._message_passes_filters(message_text, channel_config):
+                return
+            
+            # Проверяем, похоже ли на торговый сигнал
+            if not self._looks_like_signal(message_text):
+                logger.debug("Message doesn't look like a trading signal")
+                return
+            
+            # Обновляем статистику сигналов
+            self.stats['signals_detected'] += 1
+            self.stats['by_channel'][chat_id]['signals'] += 1
+            
+            logger.info(f"Signal detected from {channel_config.channel_name}")
+            
+            # Отправляем на парсинг
+            await self._process_signal(message_text, channel_config, event)
             
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error handling message: {e}")
     
-    async def _validate_signal(self, signal: TradingSignal):
-        """Валидация торгового сигнала"""
-        errors = []
+    def _message_passes_filters(self, text: str, config: ChannelConfig) -> bool:
+        """Проверка сообщения через фильтры"""
+        text_lower = text.lower()
         
-        # Проверка обязательных полей
-        if not signal.symbol:
-            errors.append("Missing symbol")
-        if not signal.direction:
-            errors.append("Missing direction")
+        # Проверяем исключающие ключевые слова
+        if config.exclude_keywords:
+            for keyword in config.exclude_keywords:
+                if keyword.lower() in text_lower:
+                    logger.debug(f"Message excluded by keyword: {keyword}")
+                    return False
         
-        # Проверка логичности цен
-        if signal.entry_zone and signal.tp_levels:
-            entry_avg = sum(signal.entry_zone) / len(signal.entry_zone)
-            for tp in signal.tp_levels:
-                if signal.direction == 'LONG' and tp <= entry_avg:
-                    errors.append(f"TP {tp} should be higher than entry {entry_avg} for LONG")
-                elif signal.direction == 'SHORT' and tp >= entry_avg:
-                    errors.append(f"TP {tp} should be lower than entry {entry_avg} for SHORT")
+        # Проверяем включающие ключевые слова (если есть)
+        if config.keywords_filter:
+            for keyword in config.keywords_filter:
+                if keyword.lower() in text_lower:
+                    return True
+            logger.debug("Message doesn't match include keywords")
+            return False
         
-        if signal.sl_level and signal.entry_zone:
-            entry_avg = sum(signal.entry_zone) / len(signal.entry_zone)
-            if signal.direction == 'LONG' and signal.sl_level >= entry_avg:
-                errors.append(f"SL {signal.sl_level} should be lower than entry {entry_avg} for LONG")
-            elif signal.direction == 'SHORT' and signal.sl_level <= entry_avg:
-                errors.append(f"SL {signal.sl_level} should be higher than entry {entry_avg} for SHORT")
-        
-        # Установка статуса валидации
-        if errors:
-            signal.validation_status = 'invalid'
-            signal.validation_errors = errors
-        else:
-            signal.validation_status = 'valid'
+        return True
     
-    async def _save_signal(self, signal: TradingSignal):
-        """Сохранение сигнала в базу данных и Redis"""
+    def _looks_like_signal(self, text: str) -> bool:
+        """Проверка, похож ли текст на торговый сигнал"""
+        text_lower = text.lower()
+        
+        # Должно содержать хотя бы 2 ключевых слова сигнала
+        keyword_count = 0
+        for keyword in self.global_signal_keywords:
+            if keyword in text_lower:
+                keyword_count += 1
+        
+        return keyword_count >= 2
+    
+    async def _process_signal(self, text: str, config: ChannelConfig, event):
+        """Обработка сигнала через роутер"""
         try:
-            # Сохранение в Redis для быстрого доступа
-            if self.redis:
-                signal_data = asdict(signal)
-                await self.redis.lpush(
-                    'ghost:signals:new',
-                    json.dumps(signal_data, default=str)
-                )
-                await self.redis.ltrim('ghost:signals:new', 0, 1000)  # Держим только 1000 последних
+            # Дополнительная информация об источнике
+            source_info = {
+                'channel_id': config.channel_id,
+                'channel_name': config.channel_name,
+                'message_id': event.message.id,
+                'message_date': event.message.date,
+                'chat_type': 'channel'
+            }
+            
+            # Отправляем в роутер сигналов
+            result = await route_signal(text, config.trader_id, source_info)
+            
+            if result:
+                self.stats['signals_parsed'] += 1
+                logger.info(f"Signal successfully parsed: {result['symbol']} {result['direction']}")
                 
-                # Сохранение в кэш по трейдеру
-                await self.redis.lpush(
-                    f'ghost:signals:trader:{signal.trader_name}',
-                    json.dumps(signal_data, default=str)
-                )
-                await self.redis.ltrim(f'ghost:signals:trader:{signal.trader_name}', 0, 100)
-            
-            # В будущем - сохранение в PostgreSQL через DatabaseManager
-            # await self.db_manager.save_signal(signal)
-            
+                # Сохраняем сырой сигнал для истории
+                await self._save_raw_signal(text, config, event, result)
+                
+            else:
+                logger.warning(f"Failed to parse signal from {config.channel_name}")
+                
+                # Сохраняем неудачный сигнал
+                await self._save_raw_signal(text, config, event, None)
+                
         except Exception as e:
-            logger.error(f"Failed to save signal: {e}")
+            logger.error(f"Error processing signal: {e}")
     
-    async def _main_loop(self):
-        """Основной цикл работы"""
-        logger.info("🔄 Starting main loop...")
-        
+    async def _save_raw_signal(self, text: str, config: ChannelConfig, event, parsed_result: Optional[Dict]):
+        """Сохранение сырого сигнала в БД"""
         try:
-            # Запуск клиента
-            await self.client.run_until_disconnected()
+            raw_signal_data = {
+                'trader_id': config.trader_id,
+                'source_msg_id': str(event.message.id),
+                'posted_at': event.message.date.isoformat(),
+                'text': text,
+                'meta': {
+                    'channel_id': config.channel_id,
+                    'channel_name': config.channel_name,
+                    'parsed': parsed_result is not None,
+                    'parsed_symbol': parsed_result.get('symbol') if parsed_result else None,
+                    'parsed_direction': parsed_result.get('direction') if parsed_result else None
+                }
+            }
+            
+            # TODO: Сохранение в signals_raw таблицу через Supabase
+            logger.debug(f"Saving raw signal from {config.trader_id}")
+            
         except Exception as e:
-            logger.error(f"Main loop error: {e}")
-            raise
+            logger.error(f"Error saving raw signal: {e}")
     
-    async def get_status(self) -> Dict[str, Any]:
-        """Получение статуса Telegram Listener"""
-        uptime = (datetime.utcnow() - self.stats['start_time']).total_seconds()
-        
+    def get_statistics(self) -> Dict[str, Any]:
+        """Получение статистики работы слушателя"""
         return {
-            'status': 'running' if self.running else 'stopped',
-            'uptime': uptime,
-            'channels_total': len(self.channels),
-            'channels_enabled': sum(1 for c in self.channels.values() if c.enabled),
-            'statistics': {
-                **self.stats,
-                'signals_per_minute': self.stats['signals_found'] / max(uptime / 60, 1),
-                'success_rate': self.stats['signals_valid'] / max(self.stats['signals_found'], 1) * 100
-            },
-            'last_health_check': self.last_health_check.isoformat(),
-            'telegram_connected': self.client is not None and self.client.is_connected(),
-            'redis_connected': self.redis is not None
+            **self.stats,
+            'channels_count': len(self.channels),
+            'active_channels': len([c for c in self.channels.values() if c.is_active]),
+            'parse_rate': (self.stats['signals_parsed'] / max(self.stats['signals_detected'], 1)) * 100
         }
     
-    async def shutdown(self):
-        """Graceful shutdown"""
-        logger.info("🛑 Shutting down Telegram Listener...")
-        self.running = False
-        
+    async def stop(self):
+        """Остановка слушателя"""
         if self.client:
             await self.client.disconnect()
-        
-        if self.redis:
-            await self.redis.close()
-        
-        logger.info("✅ Telegram Listener shutdown complete")
+            logger.info("Telegram listener stopped")
 
-async def main():
-    """Главная функция"""
-    listener = TelegramListener()
+# Функции для внешнего использования
+async def create_telegram_listener(api_id: str, api_hash: str, phone: str = None) -> TelegramListener:
+    """Создание и инициализация слушателя Telegram"""
+    listener = TelegramListener(api_id, api_hash, phone)
     
-    try:
-        await listener.initialize()
-        await listener.start_listening()
-    except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
-    except Exception as e:
-        logger.error(f"Telegram Listener failed: {e}")
-        logger.error(traceback.format_exc())
-    finally:
-        await listener.shutdown()
+    if await listener.initialize():
+        return listener
+    else:
+        raise Exception("Failed to initialize Telegram listener")
+
+def create_default_channels_config() -> List[Dict[str, Any]]:
+    """Создание конфигурации по умолчанию для каналов"""
+    return [
+        {
+            "channel_id": "",  # Заполнить реальный ID канала
+            "channel_name": "Crypto Hub VIP",
+            "trader_id": "crypto_hub_vip",
+            "is_active": True,
+            "keywords_filter": ["longing", "shorting", "entry", "targets"],
+            "exclude_keywords": ["test", "admin"]
+        },
+        {
+            "channel_id": "",  # Заполнить реальный ID канала
+            "channel_name": "2Trade",
+            "trader_id": "2trade",
+            "is_active": True,
+            "keywords_filter": ["pair:", "direction:", "entry:"],
+            "exclude_keywords": ["demo", "test"]
+        }
+    ]
+
+# Тестирование
+async def test_telegram_listener():
+    """Тестирование Telegram слушателя"""
+    print("🧪 Testing Telegram Listener")
+    
+    # Создаем мок-конфигурацию
+    test_config = ChannelConfig(
+        channel_id="test_channel",
+        channel_name="Test Channel",
+        trader_id="test_trader"
+    )
+    
+    # Создаем слушатель без реального подключения
+    listener = TelegramListener("test_api_id", "test_api_hash")
+    listener.add_channel(test_config)
+    
+    # Тестируем фильтры
+    test_messages = [
+        "Longing #SUI Here - Long (5x - 10x) Entry: $3.89",  # Должен пройти
+        "Hello everyone! How are you today?",  # Не должен пройти
+        "PAIR: BTC DIRECTION: LONG ENTRY: $43000",  # Должен пройти
+        "Admin announcement: server maintenance",  # Не должен пройти
+    ]
+    
+    for i, msg in enumerate(test_messages):
+        passes_filter = listener._message_passes_filters(msg, test_config)
+        looks_like_signal = listener._looks_like_signal(msg)
+        
+        print(f"Message {i+1}: {'✅' if (passes_filter and looks_like_signal) else '❌'}")
+        print(f"  Text: {msg[:50]}...")
+        print(f"  Passes filter: {passes_filter}")
+        print(f"  Looks like signal: {looks_like_signal}")
+        print()
+    
+    return listener
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(test_telegram_listener())
