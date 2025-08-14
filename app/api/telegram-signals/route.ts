@@ -1,200 +1,280 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// API для получения Telegram сигналов из listener
+// Force Node.js runtime
 export const runtime = 'nodejs'
 
-const SIGNALS_FILE = path.join(process.cwd(), 'news_engine', 'output', 'signals.json')
-const RAW_LOG_FILE = path.join(process.cwd(), 'news_engine', 'output', 'raw_logbook.json')
+// Безопасная инициализация Supabase клиента
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
-interface TelegramSignal {
-  timestamp: string
-  source: string
-  chat_id: number
-  text: string
-  type: string
-  trigger?: string
-}
+let supabase: SupabaseClient | null = null
 
-interface RawMessage {
-  timestamp: string
-  chat_id: number
-  channel_name: string
-  message_id: number
-  text: string
-  from_user?: string
+// Инициализируем Supabase только если есть все переменные
+if (supabaseUrl && supabaseKey && supabaseUrl !== 'https://placeholder.supabase.co') {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey)
+  } catch (error) {
+    console.error('Failed to initialize Supabase:', error)
+  }
 }
 
 export async function GET(request: NextRequest) {
   try {
+    // Проверяем, что Supabase инициализирован
+    if (!supabase) {
+      return NextResponse.json({ 
+        error: 'Supabase not configured',
+        signals: [],
+        count: 0,
+        message: 'Environment variables not set'
+      }, { status: 503 })
+    }
+
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50')
-    const type = searchParams.get('type') // 'signals' | 'raw' | 'all'
-    const hours = parseInt(searchParams.get('hours') || '24')
+    const status = searchParams.get('status') // valid, suspicious, all
+    const symbol = searchParams.get('symbol')
+    const direction = searchParams.get('direction') // LONG, SHORT
+    const source = searchParams.get('source') // источник сигнала
+    const hours = parseInt(searchParams.get('hours') || '24') // за последние N часов
 
-    const result: any = {
-      signals: [],
-      raw_messages: [],
-      stats: {
-        total_signals: 0,
-        total_raw: 0,
-        last_activity: null
+    // Строим запрос к signals_parsed без джойнов (чтобы избежать ошибок)
+    let query = supabase
+      .from('signals_parsed')
+      .select('*')
+      .gte('posted_at', new Date(Date.now() - hours * 60 * 60 * 1000).toISOString())
+      .order('posted_at', { ascending: false })
+      .limit(limit)
+
+    // Фильтры
+    if (status && status !== 'all') {
+      if (status === 'valid') {
+        query = query.eq('is_valid', true)
+      } else if (status === 'invalid') {
+        query = query.eq('is_valid', false)
+      }
+    }
+
+    if (symbol) {
+      query = query.eq('symbol', symbol.toUpperCase())
+    }
+
+    if (direction) {
+      query = query.eq('side', direction.toUpperCase())
+    }
+
+    if (source) {
+      query = query.eq('source_id', source)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return NextResponse.json({ 
+        error: 'Database error',
+        signals: [],
+        count: 0 
+      }, { status: 500 })
+    }
+
+    // Обрабатываем и форматируем данные с правильными полями
+    const signals = data?.map(signal => ({
+      id: signal.signal_id || signal.id,
+      symbol: signal.symbol,
+      direction: signal.side, // side вместо direction
+      signalType: signal.side,
+      
+      // Цены и уровни (с правильными именами полей)
+      entryPrice: signal.entry,
+      entryLevels: signal.range_low && signal.range_high ? [signal.range_low, signal.range_high] : [],
+      stopLoss: signal.sl,
+      takeProfitLevels: [signal.tp1, signal.tp2, signal.tp3, signal.tp4].filter(tp => tp !== null),
+      
+      // Риск-менеджмент
+      leverage: signal.leverage_hint,
+      confidenceScore: signal.confidence || 0.5,
+      riskRewardRatio: signal.entry && signal.sl && signal.tp1 
+        ? ((signal.tp1 - signal.entry) / (signal.entry - signal.sl)).toFixed(2)
+        : null,
+      
+      // Временные данные
+      signalTimestamp: signal.posted_at,
+      timeframe: signal.timeframe_hint,
+      
+      // Анализ
+      technicalReason: null, // Нет в схеме
+      tags: [], // Нет в схеме
+      validationStatus: signal.is_valid ? 'valid' : 'invalid',
+      parsingConfidence: signal.confidence || 0.5,
+      
+      // Источник (базовая информация, так как джойны недоступны)
+      source: {
+        name: 'Telegram Channel',
+        code: signal.source_id || 'unknown',
+        reliabilityScore: 0.75
       },
-      timestamp: new Date().toISOString()
+      
+      // Инструмент (базовая информация, так как таблица instruments недоступна)
+      instrument: {
+        symbol: signal.symbol,
+        name: `${signal.symbol} Future`,
+        exchange: 'BINANCE'
+      },
+      
+      // Сырые данные (базовая информация, так как джойны недоступны)
+      rawMessage: {
+        text: `Сигнал ${signal.direction} по ${signal.symbol}`,
+        timestamp: signal.signal_timestamp,
+        sentiment: 0.5
+      },
+      
+      // Статус исполнения (если есть связанные сделки)
+      executionStatus: 'pending', // TODO: добавить джойн к trades
+      
+      // Рассчитанные поля
+      potentialProfit: signal.entry && signal.tp1 
+        ? ((signal.tp1 - signal.entry) / signal.entry * 100).toFixed(2)
+        : null,
+      potentialLoss: signal.entry && signal.sl
+        ? ((signal.entry - signal.sl) / signal.entry * 100).toFixed(2)
+        : null,
+      
+      // Время с момента сигнала
+      ageMinutes: Math.floor((Date.now() - new Date(signal.posted_at).getTime()) / (1000 * 60))
+    })) || []
+
+    // Статистика
+    const stats = {
+      total: signals.length,
+      byDirection: {
+        LONG: signals.filter(s => s.direction === 'LONG').length,
+        SHORT: signals.filter(s => s.direction === 'SHORT').length
+      },
+      byStatus: {
+        valid: signals.filter(s => s.validationStatus === 'valid').length,
+        suspicious: signals.filter(s => s.validationStatus === 'suspicious').length
+      },
+      bySource: signals.reduce((acc, s) => {
+        const source = s.source.code
+        acc[source] = (acc[source] || 0) + 1
+        return acc
+      }, {} as Record<string, number>),
+      avgConfidence: signals.length > 0 
+        ? (signals.reduce((sum, s) => sum + (s.confidenceScore || 0), 0) / signals.length).toFixed(2)
+        : '0.00',
+      recentSignals: signals.filter(s => s.ageMinutes < 60).length // За последний час
     }
 
-    // Загружаем сигналы
-    if (type !== 'raw') {
-      try {
-        if (fs.existsSync(SIGNALS_FILE)) {
-          const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf-8')
-          const signals: TelegramSignal[] = JSON.parse(signalsData)
-          
-          // Фильтр по времени
-          const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000)
-          const recentSignals = signals
-            .filter(s => new Date(s.timestamp) > cutoffTime)
-            .slice(-limit)
-            .reverse() // Новые сначала
-          
-          result.signals = recentSignals
-          result.stats.total_signals = recentSignals.length
-          
-          if (recentSignals.length > 0) {
-            result.stats.last_activity = recentSignals[0].timestamp
-          }
-        }
-      } catch (error) {
-        console.warn('Error reading signals file:', error)
-      }
-    }
+    // Топ символы
+    const topSymbols = signals.reduce((acc, s) => {
+      acc[s.symbol] = (acc[s.symbol] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
 
-    // Загружаем сырые сообщения
-    if (type !== 'signals') {
-      try {
-        if (fs.existsSync(RAW_LOG_FILE)) {
-          const rawData = fs.readFileSync(RAW_LOG_FILE, 'utf-8')
-          const rawMessages: RawMessage[] = JSON.parse(rawData)
-          
-          // Фильтр по времени
-          const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000)
-          const recentRaw = rawMessages
-            .filter(m => new Date(m.timestamp) > cutoffTime)
-            .slice(-limit)
-            .reverse() // Новые сначала
-          
-          result.raw_messages = recentRaw
-          result.stats.total_raw = recentRaw.length
-          
-          if (recentRaw.length > 0 && !result.stats.last_activity) {
-            result.stats.last_activity = recentRaw[0].timestamp
-          }
-        }
-      } catch (error) {
-        console.warn('Error reading raw messages file:', error)
-      }
-    }
-
-    // Дополнительная статистика
-    result.stats.channels_active = Array.from(
-      new Set([
-        ...result.signals.map((s: TelegramSignal) => s.source),
-        ...result.raw_messages.map((m: RawMessage) => m.channel_name)
-      ])
-    ).length
-
-    result.stats.signal_types = Array.from(
-      new Set(result.signals.map((s: TelegramSignal) => s.type))
-    )
+    const sortedSymbols = Object.entries(topSymbols)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .map(([symbol, count]) => ({ symbol, count }))
 
     return NextResponse.json({
-      success: true,
-      data: result,
-      message: `Loaded ${result.stats.total_signals} signals and ${result.stats.total_raw} raw messages`
+      signals,
+      stats,
+      topSymbols: sortedSymbols,
+      count: signals.length,
+      timestamp: new Date().toISOString(),
+      source: 'supabase_advanced',
+      filters: {
+        hours,
+        status,
+        symbol,
+        direction,
+        source,
+        limit
+      },
+      message: signals.length > 0 
+        ? `Найдено ${signals.length} сигналов за последние ${hours} часов` 
+        : 'Сигналов не найдено'
     })
 
   } catch (error) {
-    console.error('Telegram signals API error:', error)
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to load Telegram data',
-      data: {
-        signals: [],
-        raw_messages: [],
-        stats: {
-          total_signals: 0,
-          total_raw: 0,
-          last_activity: null,
-          channels_active: 0,
-          signal_types: []
-        }
-      }
+    console.error('API error:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      signals: [],
+      count: 0 
     }, { status: 500 })
   }
 }
 
-// POST endpoint для ручного добавления сигналов (для тестирования)
+// POST для создания нового сигнала (для тестирования)
 export async function POST(request: NextRequest) {
   try {
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const body = await request.json()
-    const { text, source, type = 'manual' } = body
-
-    if (!text || !source) {
-      return NextResponse.json({
-        success: false,
-        error: 'Text and source are required'
-      }, { status: 400 })
-    }
-
-    const signal: TelegramSignal = {
-      timestamp: new Date().toISOString(),
-      source,
-      chat_id: -1,
-      text,
-      type,
-      trigger: 'manual'
-    }
-
-    // Читаем существующие сигналы
-    let signals: TelegramSignal[] = []
-    if (fs.existsSync(SIGNALS_FILE)) {
-      try {
-        const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf-8')
-        signals = JSON.parse(signalsData)
-      } catch (error) {
-        console.warn('Error reading existing signals:', error)
+    
+    // Валидация обязательных полей
+    const requiredFields = ['symbol', 'direction', 'signal_type']
+    for (const field of requiredFields) {
+      if (!body[field]) {
+        return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 })
       }
     }
 
-    // Добавляем новый сигнал
-    signals.push(signal)
+    // Получаем ID источника (по умолчанию - whales_crypto_guide)
+    const sourceResult = await supabase
+      .table('signal_sources')
+      .select('id')
+      .eq('source_code', body.source_code || 'whales_crypto_guide')
+      .single()
 
-    // Ограничиваем количество сигналов
-    if (signals.length > 100) {
-      signals = signals.slice(-100)
+    if (!sourceResult.data) {
+      return NextResponse.json({ error: 'Signal source not found' }, { status: 404 })
     }
 
-    // Создаем директорию если не существует
-    const outputDir = path.dirname(SIGNALS_FILE)
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true })
+    // Создание нового сигнала
+    const signalData = {
+      source_id: sourceResult.data.id,
+      signal_type: body.signal_type.toUpperCase(),
+      symbol: body.symbol.toUpperCase(),
+      direction: body.direction.toUpperCase(),
+      entry_price: body.entry_price,
+      entry_levels: body.entry_levels || [],
+      stop_loss: body.stop_loss,
+      take_profit_levels: body.take_profit_levels || [],
+      leverage: body.leverage,
+      confidence_score: body.confidence_score || 0.5,
+      signal_timestamp: new Date().toISOString(),
+      technical_reason: body.technical_reason,
+      timeframe: body.timeframe,
+      parsing_method: 'manual',
+      parser_version: 'v1.0.0',
+      validation_status: 'valid',
+      tags: body.tags || []
     }
 
-    // Сохраняем обновленные сигналы
-    fs.writeFileSync(SIGNALS_FILE, JSON.stringify(signals, null, 2))
+    const { data, error } = await supabase
+      .table('signals_parsed')
+      .insert([signalData])
+      .select()
+
+    if (error) {
+      console.error('Supabase error:', error)
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Signal added successfully',
-      signal
+      signal: data[0],
+      message: 'Торговый сигнал создан успешно'
     })
 
   } catch (error) {
-    console.error('Error adding signal:', error)
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to add signal'
-    }, { status: 500 })
+    console.error('API error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -40,7 +40,7 @@ async def setup_telegram():
         
         # Проверяем авторизацию
         if await client.is_user_authorized():
-            me = await client.get_me()
+        me = await client.get_me()
             print(f"✅ Авторизация успешна!")
             print(f"👤 Пользователь: {me.first_name} (@{me.username})")
             print(f"📞 Телефон: {me.phone}")
@@ -68,8 +68,8 @@ async def setup_telegram():
                 
             print(f"\n💾 Сессия сохранена как 'ghost_session.session'")
             print("✅ Теперь модули могут подключаться к Telegram без интерактивного ввода")
-            return True
-            
+        return True
+        
         else:
             print("❌ Авторизация не удалась")
             return False
@@ -91,7 +91,7 @@ def main():
         if success:
             print("\n🎉 Настройка завершена успешно!")
             print("🚀 Теперь можете запустить telegram_listener")
-        else:
+    else:
             print("\n💥 Настройка не удалась")
             sys.exit(1)
     except KeyboardInterrupt:
