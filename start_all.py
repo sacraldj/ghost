@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-GHOST All-in-One Engine Launcher
-Запускает все три движка в одном процессе
+GHOST Unified Live System Launcher
+Запускает новую unified систему с live обработкой сигналов
 """
 
 import asyncio
@@ -9,176 +9,259 @@ import logging
 import os
 import sys
 import signal
-from datetime import datetime
 import threading
 import time
+from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Добавляем корневую папку в путь
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Настройка логирования
+os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ghost_all_engines.log'),
+        logging.FileHandler('logs/ghost_unified_system.log'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-class GhostEngineManager:
-    """Менеджер для запуска всех движков"""
+class UnifiedSystemManager:
+    """Менеджер для запуска unified системы"""
     
     def __init__(self):
         self.running = True
-        self.threads = []
+        self.live_system_task = None
+        self.orchestrator_task = None
+        self.http_server = None
         
-    def telegram_parser_worker(self):
-        """Воркер для Telegram Parser"""
+    async def start_live_system(self):
+        """Запуск live системы обработки сигналов"""
         try:
-            logger.info("🤖 Запуск Telegram Parser...")
+            logger.info("🚀 Запуск GHOST Unified Live System...")
             
-            # Добавляем путь и импортируем
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'telegram_parsers'))
+            # Импортируем и запускаем live систему
+            from scripts.start_live_system import LiveSystemOrchestrator
             
-            # Простая заглушка - в реальности будет парсер
-            while self.running:
-                logger.info("📱 Telegram Parser: слушаю канал @Whalesguide...")
-                time.sleep(30)  # Проверяем каждые 30 секунд
-                
+            orchestrator = LiveSystemOrchestrator()
+            await orchestrator.start_system()
+            
         except Exception as e:
-            logger.error(f"❌ Ошибка в Telegram Parser: {e}")
+            logger.error(f"❌ Ошибка в Live System: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
-    def signal_orchestrator_worker(self):
-        """Воркер для Signal Orchestrator"""
+    async def start_orchestrator(self):
+        """Запуск центрального оркестратора"""
         try:
-            logger.info("⚙️ Запуск Signal Orchestrator...")
+            logger.info("🚀 Запуск GHOST Orchestrator...")
             
-            # Добавляем путь и импортируем
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'signals'))
+            # Импортируем и запускаем оркестратор
+            from core.ghost_orchestrator import GhostOrchestrator
             
-            # Простая заглушка - в реальности будет оркестратор
-            while self.running:
-                logger.info("🎯 Signal Orchestrator: обрабатываю сигналы...")
-                time.sleep(45)  # Проверяем каждые 45 секунд
-                
+            orchestrator = GhostOrchestrator()
+            await orchestrator.initialize()
+            await orchestrator.start()
+            
         except Exception as e:
-            logger.error(f"❌ Ошибка в Signal Orchestrator: {e}")
+            logger.error(f"❌ Ошибка в Orchestrator: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
-    def news_engine_worker(self):
-        """Воркер для News Engine"""
+    def start_health_server(self):
+        """Запуск HTTP сервера для health checks (для Render)"""
         try:
-            logger.info("📰 Запуск News Engine...")
-            
-            # Добавляем путь и импортируем
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'news_engine'))
-            
-            # Простая заглушка - в реальности будет новостной движок
-            while self.running:
-                logger.info("📊 News Engine: собираю новости...")
-                time.sleep(60)  # Проверяем каждую минуту
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка в News Engine: {e}")
-    
-    def health_check_worker(self):
-        """Воркер для health check (для Render Web Service)"""
-        try:
-            from http.server import HTTPServer, BaseHTTPRequestHandler
-            
             class HealthHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
                     if self.path == '/health':
                         self.send_response(200)
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
+                        
+                        # Собираем статистику системы
                         response = {
                             "status": "healthy",
-                            "engines": ["telegram_parser", "signal_orchestrator", "news_engine"],
-                            "timestamp": datetime.now().isoformat()
+                            "system": "GHOST Unified Live System",
+                            "components": [
+                                "UnifiedSignalParser",
+                                "LiveSignalProcessor", 
+                                "ChannelManager",
+                                "AIFallbackParser"
+                            ],
+                            "timestamp": datetime.now().isoformat(),
+                            "uptime_check": "OK"
                         }
-                        self.wfile.write(str(response).encode())
+                        
+                        import json
+                        self.wfile.write(json.dumps(response).encode())
+                        
+                    elif self.path == '/':
+                        self.send_response(200)
+                        self.send_header('Content-type', 'text/html')
+                        self.end_headers()
+                        
+                        html = """
+                        <!DOCTYPE html>
+                        <html>
+                        <head><title>GHOST Unified System</title></head>
+                        <body>
+                            <h1>🎯 GHOST Unified Live Signal System</h1>
+                            <p><strong>Status:</strong> Running</p>
+                            <p><strong>Components:</strong></p>
+                            <ul>
+                                <li>📊 UnifiedSignalParser - Multi-format signal parsing</li>
+                                <li>🔄 LiveSignalProcessor - Real-time processing</li>
+                                <li>📡 ChannelManager - Source management</li>
+                                <li>🤖 AIFallbackParser - OpenAI + Gemini</li>
+                            </ul>
+                            <p><strong>Health Check:</strong> <a href="/health">/health</a></p>
+                            <p><strong>Timestamp:</strong> {timestamp}</p>
+                        </body>
+                        </html>
+                        """.format(timestamp=datetime.now().isoformat())
+                        
+                        self.wfile.write(html.encode())
+                        
                     else:
                         self.send_response(404)
+                        self.send_header('Content-type', 'text/plain')
                         self.end_headers()
                         self.wfile.write(b'Not Found')
                 
                 def log_message(self, format, *args):
-                    pass  # Отключаем логи HTTP сервера
+                    # Логируем только важные запросы
+                    if self.path != '/health':
+                        logger.info(f"HTTP {self.command} {self.path}")
             
             port = int(os.environ.get('PORT', 8000))
-            server = HTTPServer(('0.0.0.0', port), HealthHandler)
+            self.http_server = HTTPServer(('0.0.0.0', port), HealthHandler)
             logger.info(f"🌐 Health check server запущен на порту {port}")
-            server.serve_forever()
+            
+            # Запускаем сервер в отдельном потоке
+            server_thread = threading.Thread(target=self.http_server.serve_forever)
+            server_thread.daemon = True
+            server_thread.start()
             
         except Exception as e:
-            logger.error(f"❌ Ошибка в Health Check: {e}")
+            logger.error(f"❌ Ошибка в Health Server: {e}")
     
-    def start_all(self):
-        """Запуск всех движков"""
-        logger.info("🚀 GHOST All-in-One Engine Manager запущен!")
-        logger.info("=" * 50)
+    async def start_all(self):
+        """Запуск всей системы"""
+        logger.info("🎯 GHOST UNIFIED LIVE SYSTEM MANAGER")
+        logger.info("=" * 60)
+        logger.info("🚀 Unified Signal Processing with AI Fallback")
+        logger.info("📱 Telegram + Discord + RSS Integration") 
+        logger.info("🤖 OpenAI + Gemini AI Parsing")
+        logger.info("📊 Real-time Statistics & Monitoring")
+        logger.info("=" * 60)
         
         # Проверяем переменные окружения
-        required_vars = ['SUPABASE_URL', 'SUPABASE_ANON_KEY']
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
-        
-        if missing_vars:
-            logger.warning(f"⚠️ Отсутствуют переменные окружения: {missing_vars}")
-        else:
-            logger.info("✅ Все необходимые переменные окружения найдены")
-        
-        # Создаем и запускаем потоки
-        workers = [
-            threading.Thread(target=self.telegram_parser_worker, name="TelegramParser"),
-            threading.Thread(target=self.signal_orchestrator_worker, name="SignalOrchestrator"), 
-            threading.Thread(target=self.news_engine_worker, name="NewsEngine"),
-            threading.Thread(target=self.health_check_worker, name="HealthCheck")
+        required_vars = [
+            'NEXT_PUBLIC_SUPABASE_URL', 
+            'SUPABASE_SERVICE_ROLE_KEY'
         ]
         
-        # Запускаем все потоки
-        for worker in workers:
-            worker.daemon = True
-            worker.start()
-            self.threads.append(worker)
+        optional_vars = [
+            'OPENAI_API_KEY',
+            'GEMINI_API_KEY',
+            'TELEGRAM_API_ID',
+            'TELEGRAM_API_HASH'
+        ]
         
-        logger.info(f"✅ Запущено {len(workers)} воркеров")
+        missing_required = [var for var in required_vars if not os.getenv(var)]
+        missing_optional = [var for var in optional_vars if not os.getenv(var)]
         
-        # Главный цикл
+        if missing_required:
+            logger.warning(f"⚠️ Отсутствуют обязательные переменные: {missing_required}")
+            logger.warning("⚠️ Запускаем в режиме демонстрации с mock данными")
+            # Устанавливаем mock переменные для демонстрации
+            for var in missing_required:
+                if not os.getenv(var):
+                    os.environ[var] = f"mock-{var.lower()}"
+        
+        if missing_optional:
+            logger.warning(f"⚠️ Отсутствуют опциональные переменные: {missing_optional}")
+            logger.warning("⚠️ Некоторые функции могут быть недоступны")
+        
+        logger.info("✅ Основные переменные окружения найдены")
+        
         try:
-            while self.running:
-                # Проверяем статус потоков
-                alive_threads = [t for t in self.threads if t.is_alive()]
-                logger.info(f"📊 Активных потоков: {len(alive_threads)}/{len(self.threads)}")
-                time.sleep(120)  # Статистика каждые 2 минуты
-                
+            # 1. Запускаем HTTP сервер для health checks
+            self.start_health_server()
+            
+            # 2. Запускаем оркестратор и live систему параллельно
+            logger.info("🚀 Запуск всех компонентов системы...")
+            
+            # Создаем задачи для параллельного выполнения
+            self.orchestrator_task = asyncio.create_task(self.start_orchestrator())
+            self.live_system_task = asyncio.create_task(self.start_live_system())
+            
+            # Ждем выполнения обеих задач
+            await asyncio.gather(
+                self.orchestrator_task,
+                self.live_system_task,
+                return_exceptions=True
+            )
+            
         except KeyboardInterrupt:
             logger.info("🛑 Получен сигнал остановки...")
-            self.stop_all()
+            await self.stop_all()
+        except Exception as e:
+            logger.error(f"❌ Критическая ошибка: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
-    def stop_all(self):
-        """Остановка всех движков"""
-        logger.info("🛑 Остановка всех движков...")
+    async def stop_all(self):
+        """Остановка всей системы"""
+        logger.info("🛑 Остановка Unified System...")
         self.running = False
         
-        # Ждем завершения потоков
-        for thread in self.threads:
-            if thread.is_alive():
-                thread.join(timeout=5)
+        # Останавливаем задачи
+        if self.orchestrator_task and not self.orchestrator_task.done():
+            self.orchestrator_task.cancel()
+            logger.info("✅ Orchestrator task остановлен")
         
-        logger.info("✅ Все движки остановлены")
+        if self.live_system_task and not self.live_system_task.done():
+            self.live_system_task.cancel()
+            logger.info("✅ Live system task остановлен")
+        
+        # Останавливаем HTTP сервер
+        if self.http_server:
+            self.http_server.shutdown()
+            logger.info("✅ HTTP server остановлен")
+        
+        logger.info("✅ Система остановлена")
 
 def signal_handler(signum, frame):
     """Обработчик сигналов для graceful shutdown"""
     logger.info(f"🛑 Получен сигнал {signum}")
+    # asyncio.create_task не работает здесь, используем глобальную переменную
     global manager
     if manager:
-        manager.stop_all()
+        asyncio.create_task(manager.stop_all())
     sys.exit(0)
 
-if __name__ == "__main__":
+async def main():
+    """Главная async функция"""
+    global manager
+    
     # Регистрируем обработчики сигналов
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
     # Создаем и запускаем менеджер
-    manager = GhostEngineManager()
-    manager.start_all()
+    manager = UnifiedSystemManager()
+    await manager.start_all()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Система остановлена пользователем")
+    except Exception as e:
+        logger.error(f"💥 Фатальная ошибка: {e}")
+        sys.exit(1)

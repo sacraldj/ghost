@@ -12,10 +12,45 @@ interface Trader {
   source_handle: string
   mode: 'observe' | 'paper' | 'live'
   is_active: boolean
+  
+  // Базовые счетчики (как у Дарена)
   total_signals: number
+  valid_signals: number
+  executed_signals: number
+  
+  // ЧЕСТНАЯ СТАТИСТИКА как у Дарена: "Вася дал 109 раз, из них 90 был TP1"
+  tp1_count: number
+  tp2_count: number
+  sl_count: number
+  be_count: number
+  
+  // Процентные показатели
+  tp1_rate: number
+  tp2_rate: number
+  sl_rate: number
   winrate_30d: number
+  
+  // Финансовые показатели
+  total_pnl: number
+  avg_pnl: number
   pnl_30d: number
+  avg_win: number
+  avg_loss: number
+  profit_factor: number
+  
+  // Временные показатели
+  avg_time_to_tp1: number
+  
+  // Метаданные
   last_signal_at: string
+  avg_confidence: number
+  
+  // Строка статистики как у Дарена
+  stats_summary: string
+  
+  // Дополнительные показатели качества
+  signal_quality: number
+  execution_rate: number
 }
 
 interface Signal {

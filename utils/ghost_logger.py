@@ -12,7 +12,9 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
-import aioredis
+# Temporarily disable Redis due to compatibility issues
+# import aioredis
+aioredis = None
 import aiofiles
 
 @dataclass

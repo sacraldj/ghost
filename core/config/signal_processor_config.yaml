@@ -1,0 +1,18 @@
+processing:
+  batch_size: 10
+  max_processing_time: 30
+  retry_attempts: 3
+  retry_delay: 5
+quality_thresholds:
+  min_confidence: 0.6
+  min_quality_score: 0.5
+  min_trader_win_rate: 0.4
+redis:
+  input_queue: ghost:signals:new
+  output_queue: ghost:signals:processed
+  url: redis://localhost:6379/1
+risk_management:
+  default_balance: 1000.0
+  max_leverage: 50
+  max_risk_percent: 2.0
+  min_risk_reward_ratio: 1.5

@@ -1,148 +1,105 @@
 #!/usr/bin/env python3
 """
-GHOST Telegram Setup Script
-Интерактивная настройка Telegram listener
-
-Usage:
-    python scripts/setup_telegram.py
+Скрипт для настройки Telegram авторизации
+Создает сессию для доступа к каналам
 """
 
-import os
 import asyncio
-import logging
-from telethon import TelegramClient
+import os
+import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+# Загружаем переменные окружения
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-logger = logging.getLogger(__name__)
+from telethon import TelegramClient
 
-
-async def setup_telegram_session():
-    """Интерактивная настройка Telegram сессии"""
+async def setup_telegram():
+    """Настройка Telegram авторизации"""
     
-    print("🤖 GHOST Telegram Setup")
-    print("=" * 50)
-    
-    # Get API credentials
-    api_id = os.getenv("TELEGRAM_API_ID")
-    api_hash = os.getenv("TELEGRAM_API_HASH")
+    # Получаем API данные из .env
+    api_id = os.getenv('TELEGRAM_API_ID')
+    api_hash = os.getenv('TELEGRAM_API_HASH')
     
     if not api_id or not api_hash:
-        print("❌ Ошибка: TELEGRAM_API_ID и TELEGRAM_API_HASH не найдены")
-        print("\n📝 Получите API ключи:")
-        print("1. Перейдите на https://my.telegram.org")
-        print("2. Войдите с номером телефона")
-        print("3. Создайте новое приложение в 'API development tools'")
-        print("4. Добавьте ключи в .env.local:")
-        print("   TELEGRAM_API_ID=your_api_id")
-        print("   TELEGRAM_API_HASH=your_api_hash")
+        print("❌ Ошибка: TELEGRAM_API_ID и TELEGRAM_API_HASH не найдены в .env файле")
+        print("💡 Получите их на https://my.telegram.org/apps")
         return False
     
-    session_name = input("\n📱 Имя сессии (по умолчанию 'ghost_trader'): ").strip()
-    if not session_name:
-        session_name = "ghost_trader"
+    print("🔑 Настройка Telegram авторизации...")
+    print(f"📱 API ID: {api_id}")
+    print(f"🔐 API Hash: {api_hash[:10]}...")
     
-    print(f"\n🔧 Создаю сессию '{session_name}'...")
+    # Создаем клиент
+    client = TelegramClient('ghost_session', int(api_id), api_hash)
     
     try:
-        client = TelegramClient(session_name, api_id, api_hash)
-        
+        print("🚀 Подключение к Telegram...")
         await client.start()
         
-        # Get account info
-        me = await client.get_me()
-        print(f"✅ Успешно вошли как: {me.first_name} (@{me.username})")
-        
-        # Test message sending (optional)
-        test_send = input("\n📤 Отправить тестовое сообщение себе? (y/N): ").strip().lower()
-        if test_send in ['y', 'yes']:
-            await client.send_message('me', '🤖 GHOST Telegram listener настроен!')
-            print("✅ Тестовое сообщение отправлено")
-        
-        await client.disconnect()
-        
-        print(f"\n🎉 Сессия '{session_name}.session' создана успешно!")
-        print(f"📁 Файл сессии: {os.path.abspath(session_name + '.session')}")
-        
-        return True
-        
+        # Проверяем авторизацию
+        if await client.is_user_authorized():
+            me = await client.get_me()
+            print(f"✅ Авторизация успешна!")
+            print(f"👤 Пользователь: {me.first_name} (@{me.username})")
+            print(f"📞 Телефон: {me.phone}")
+            
+            # Получаем список каналов
+            print("\n📡 Доступные каналы:")
+            dialogs = await client.get_dialogs()
+            channels = []
+            
+            for dialog in dialogs:
+                if dialog.is_channel:
+                    channels.append({
+                        'id': dialog.id,
+                        'title': dialog.title,
+                        'username': dialog.entity.username if hasattr(dialog.entity, 'username') else None
+                    })
+            
+            if channels:
+                print(f"Найдено {len(channels)} каналов:")
+                for i, channel in enumerate(channels[:10]):  # Показываем первые 10
+                    username = f"@{channel['username']}" if channel['username'] else "Приватный"
+                    print(f"  {i+1}. {channel['title']} ({username}) - ID: {channel['id']}")
+            else:
+                print("  Каналов не найдено")
+                
+            print(f"\n💾 Сессия сохранена как 'ghost_session.session'")
+            print("✅ Теперь модули могут подключаться к Telegram без интерактивного ввода")
+            return True
+            
+        else:
+            print("❌ Авторизация не удалась")
+            return False
+            
     except Exception as e:
-        print(f"❌ Ошибка создания сессии: {e}")
+        print(f"❌ Ошибка подключения: {e}")
         return False
-
-
-async def test_channels_access():
-    """Тест доступа к каналам"""
-    
-    print("\n🔍 Тестирование доступа к каналам...")
-    
-    api_id = os.getenv("TELEGRAM_API_ID")
-    api_hash = os.getenv("TELEGRAM_API_HASH")
-    session_name = "ghost_trader"
-    
-    try:
-        client = TelegramClient(session_name, api_id, api_hash)
-        await client.start()
         
-        # Get dialogs (chats/channels)
-        print("\n📋 Ваши каналы и чаты:")
-        async for dialog in client.iter_dialogs(limit=10):
-            if dialog.is_channel:
-                print(f"📢 {dialog.name} (ID: {dialog.id})")
-            elif dialog.is_group:
-                print(f"👥 {dialog.name} (ID: {dialog.id})")
-        
+    finally:
         await client.disconnect()
-        
-    except Exception as e:
-        print(f"❌ Ошибка тестирования: {e}")
-
 
 def main():
-    """Main setup function"""
+    """Главная функция"""
+    print("🎭 GHOST - Настройка Telegram")
+    print("=" * 40)
     
-    print("🚀 Настройка GHOST Telegram Listener")
-    
-    choice = input("""
-Выберите действие:
-1. 🔧 Создать новую сессию
-2. 🔍 Тестировать доступ к каналам  
-3. 📝 Показать инструкции
-
-Ваш выбор (1-3): """).strip()
-
-    if choice == "1":
-        success = asyncio.run(setup_telegram_session())
+    try:
+        success = asyncio.run(setup_telegram())
         if success:
-            asyncio.run(test_channels_access())
-    elif choice == "2":
-        asyncio.run(test_channels_access())
-    elif choice == "3":
-        print("""
-📖 Инструкции по настройке:
-
-1. 🔑 Получите API ключи:
-   - Перейдите на https://my.telegram.org
-   - Войдите с номером телефона
-   - Создайте приложение в 'API development tools'
-   
-2. 📝 Добавьте в .env.local:
-   TELEGRAM_API_ID=your_api_id
-   TELEGRAM_API_HASH=your_api_hash
-   
-3. 🔧 Запустите настройку:
-   python scripts/setup_telegram.py
-   
-4. 📋 Настройте каналы в:
-   news_engine/config/telegram_channels.yaml
-   
-5. 🚀 Запустите listener:
-   python news_engine/telegram_listener.py
-""")
-    else:
-        print("❌ Неверный выбор")
-
+            print("\n🎉 Настройка завершена успешно!")
+            print("🚀 Теперь можете запустить telegram_listener")
+        else:
+            print("\n💥 Настройка не удалась")
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Настройка прервана пользователем")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n💥 Неожиданная ошибка: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

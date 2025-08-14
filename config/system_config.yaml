@@ -17,7 +17,7 @@ orchestrator:
 
 # Конфигурация Redis
 redis:
-  enabled: true
+  enabled: false
   url: redis://localhost:6379/0
   password: null
   max_connections: 10

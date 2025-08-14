@@ -87,7 +87,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '10')
-    const minutes = parseInt(searchParams.get('minutes') || '5') // По умолчанию 5 минут для критических
+    const minutes = parseInt(searchParams.get('minutes') || '1440') // По умолчанию 24 часа (1440 минут) для критических
     const source = searchParams.get('source')
     const severity = searchParams.get('severity') // 'critical', 'urgent', 'breaking'
 
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           id, source_name, title, content, url, published_at,
           sentiment, urgency, is_critical, priority, market_impact
         FROM critical_news 
-        WHERE published_at >= datetime('now', '-${minutes} minutes')
+        WHERE 1=1
       `
       
       const params: any[] = []

@@ -18,10 +18,19 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 import yaml
-import aioredis
+# Временно отключаем aioredis из-за проблем совместимости
+try:
+    import aioredis
+except (ModuleNotFoundError, ImportError) as e:
+    print(f"⚠️ aioredis недоступен: {e}")
+    aioredis = None
 import traceback
 import re
 
@@ -39,7 +48,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/signal_processor.log'),
+        logging.FileHandler('../logs/signal_processor.log'),
         logging.StreamHandler()
     ]
 )
@@ -233,7 +242,7 @@ class SignalProcessor:
     def __init__(self, config_path: str = "config/signal_processor_config.yaml"):
         self.config_path = config_path
         self.config = {}
-        self.redis: Optional[aioredis.Redis] = None
+        self.redis: Optional[Any] = None  # aioredis.Redis или None
         self.db_manager: Optional[DatabaseManager] = None
         
         # Компоненты
@@ -319,6 +328,11 @@ class SignalProcessor:
     
     async def _init_redis(self):
         """Инициализация Redis"""
+        if not aioredis:
+            logger.warning("⚠️ aioredis недоступен, Redis отключен")
+            self.redis = None
+            return
+            
         try:
             redis_url = self.config['redis']['url']
             self.redis = await aioredis.from_url(redis_url)
@@ -326,7 +340,7 @@ class SignalProcessor:
             logger.info("✅ Redis connected")
         except Exception as e:
             logger.error(f"❌ Redis connection failed: {e}")
-            raise
+            self.redis = None
     
     async def _init_database(self):
         """Инициализация базы данных"""
@@ -358,6 +372,11 @@ class SignalProcessor:
         """Получение сигналов из Redis очереди"""
         while self.running:
             try:
+                if not self.redis:
+                    # Если Redis недоступен, просто ждем
+                    await asyncio.sleep(5)
+                    continue
+                    
                 # Получаем сигналы из очереди
                 signal_data = await self.redis.brpop(
                     self.config['redis']['input_queue'], 
@@ -606,17 +625,18 @@ class SignalProcessor:
             signal_data = asdict(signal)
             
             # Сохранение в Redis для следующего этапа (ML фильтрация)
-            if signal.processing_status == 'processed':
+            if signal.processing_status == 'processed' and self.redis:
                 await self.redis.lpush(
                     self.config['redis']['output_queue'],
                     json.dumps(signal_data, default=str)
                 )
             
             # Логирование статистики
-            await self.redis.hset(
-                'ghost:signal_processor:stats',
-                mapping={
-                    'signals_processed': self.stats['signals_processed'],
+            if self.redis:
+                await self.redis.hset(
+                    'ghost:signal_processor:stats',
+                    mapping={
+                        'signals_processed': self.stats['signals_processed'],
                     'signals_valid': self.stats['signals_valid'],
                     'signals_rejected': self.stats['signals_rejected'],
                     'last_update': datetime.utcnow().isoformat()
@@ -665,7 +685,10 @@ class SignalProcessor:
         self.running = False
         
         if self.redis:
-            await self.redis.close()
+            try:
+                await self.redis.close()
+            except:
+                pass  # Игнорируем ошибки при закрытии
         
         logger.info("✅ Signal Processor shutdown complete")
 

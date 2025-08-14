@@ -1,0 +1,29 @@
+check_interval: 60
+connection_params:
+  api_hash: YOUR_API_HASH
+  api_id: YOUR_API_ID
+  channel_id: '-1001234567891'
+  phone: YOUR_PHONE
+created_at: '2025-08-13T21:32:15.412885'
+description: Secondary signals source
+filters:
+  keywords_exclude:
+  - test
+  - demo
+  keywords_include:
+  - signal
+  - entry
+  - target
+last_error: null
+last_success: null
+max_retries: 3
+name: 2Trade Channel
+parser_config:
+  confidence_threshold: 0.6
+parser_type: 2trade_parser
+priority: 20
+retry_delay: 300
+source_id: 2trade_telegram
+source_type: telegram_channel
+status: active
+updated_at: '2025-08-13T21:32:15.412888'

@@ -106,58 +106,150 @@ async function getTraders(request: NextRequest) {
       return getTradersMock(mode, active) // Fallback to mock data
     }
     
-    // Получаем реальную статистику для каждого трейдера
+    // Получаем честную детальную статистику для каждого трейдера (как у Дарена)
     const enrichedTraders = await Promise.all(
       (traders || []).map(async (trader) => {
         try {
-          // Получаем статистику сигналов
-          const { data: signalsStats, error: signalsError } = await supabase
+          // 1. Общее количество сигналов (сырых)
+          const { count: totalRawSignals } = await supabase
             .from('signals_raw')
             .select('*', { count: 'exact', head: true })
             .eq('trader_id', trader.trader_id)
           
-          const total_signals = signalsStats || 0
+          // 2. Количество обработанных валидных сигналов
+          const { data: parsedSignals } = await supabase
+            .from('signals_parsed')
+            .select('signal_id, is_valid, confidence, posted_at')
+            .eq('trader_id', trader.trader_id)
+            .order('posted_at', { ascending: false })
           
-          // Получаем статистику за последний месяц
+          const validSignals = parsedSignals?.filter(s => s.is_valid).length || 0
+          
+          // 3. Получаем ВСЕ исходы для честной статистики
+          const { data: allOutcomes } = await supabase
+            .from('signal_outcomes')
+            .select(`
+              signal_id,
+              final_result,
+              pnl_sim,
+              roi_sim,
+              duration_to_tp1_min,
+              duration_to_tp2_min,
+              max_favorable,
+              max_adverse,
+              tp1_hit_at,
+              tp2_hit_at,
+              sl_hit_at,
+              calculated_at
+            `)
+            .eq('trader_id', trader.trader_id)
+          
+          // 4. ЧЕСТНАЯ СТАТИСТИКА как у Дарена: "Вася дал сигнал дог 109 раз"
+          const totalExecuted = allOutcomes?.length || 0
+          
+          // Подсчет по исходам (как у Дарена)
+          const tp1Count = allOutcomes?.filter(o => 
+            o.final_result === 'TP1_ONLY' || o.final_result === 'TP2_FULL'
+          ).length || 0
+          
+          const tp2Count = allOutcomes?.filter(o => 
+            o.final_result === 'TP2_FULL'
+          ).length || 0
+          
+          const slCount = allOutcomes?.filter(o => 
+            o.final_result === 'SL'
+          ).length || 0
+          
+          const beCount = allOutcomes?.filter(o => 
+            o.final_result === 'BE' || o.final_result === 'TIMEOUT'
+          ).length || 0
+          
+          // Процентные показатели
+          const tp1Rate = totalExecuted > 0 ? (tp1Count / totalExecuted) * 100 : 0
+          const tp2Rate = totalExecuted > 0 ? (tp2Count / totalExecuted) * 100 : 0
+          const slRate = totalExecuted > 0 ? (slCount / totalExecuted) * 100 : 0
+          
+          // 5. Финансовые показатели
+          const totalPnl = allOutcomes?.reduce((sum, o) => sum + (parseFloat(o.pnl_sim || '0')), 0) || 0
+          const avgPnl = totalExecuted > 0 ? totalPnl / totalExecuted : 0
+          
+          const winningTrades = allOutcomes?.filter(o => parseFloat(o.pnl_sim || '0') > 0) || []
+          const losingTrades = allOutcomes?.filter(o => parseFloat(o.pnl_sim || '0') < 0) || []
+          
+          const avgWin = winningTrades.length > 0 
+            ? winningTrades.reduce((sum, t) => sum + parseFloat(t.pnl_sim || '0'), 0) / winningTrades.length 
+            : 0
+          const avgLoss = losingTrades.length > 0 
+            ? Math.abs(losingTrades.reduce((sum, t) => sum + parseFloat(t.pnl_sim || '0'), 0) / losingTrades.length)
+            : 0
+          
+          const profitFactor = avgLoss > 0 ? avgWin / avgLoss : 0
+          
+          // 6. Статистика за последние 30 дней
           const thirtyDaysAgo = new Date()
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
           
-          const { data: recentStats, error: recentError } = await supabase
-            .from('signal_outcomes')
-            .select('final_result, pnl_sim')
-            .eq('trader_id', trader.trader_id)
-            .gte('calculated_at', thirtyDaysAgo.toISOString())
+          const recentOutcomes = allOutcomes?.filter(o => 
+            new Date(o.calculated_at) >= thirtyDaysAgo
+          ) || []
           
-          let winrate_30d = 0
-          let pnl_30d = 0
+          const pnl_30d = recentOutcomes.reduce((sum, o) => sum + parseFloat(o.pnl_sim || '0'), 0)
+          const winrate_30d = recentOutcomes.length > 0 
+            ? (recentOutcomes.filter(o => ['TP1_ONLY', 'TP2_FULL'].includes(o.final_result)).length / recentOutcomes.length) * 100 
+            : 0
           
-          if (recentStats && recentStats.length > 0) {
-            const winCount = recentStats.filter(s => 
-              s.final_result && ['TP1_ONLY', 'TP2_FULL'].includes(s.final_result)
-            ).length
-            
-            winrate_30d = (winCount / recentStats.length) * 100
-            pnl_30d = recentStats.reduce((sum, s) => sum + (parseFloat(s.pnl_sim || '0')), 0)
-          }
+          // 7. Временные метрики
+          const avgTimeToTP1 = allOutcomes?.filter(o => o.duration_to_tp1_min)
+            .reduce((sum, o, _, arr) => sum + (parseInt(o.duration_to_tp1_min) || 0) / arr.length, 0) || 0
           
-          // Получаем последний сигнал
-          const { data: lastSignal, error: lastSignalError } = await supabase
-            .from('signals_raw')
-            .select('posted_at')
-            .eq('trader_id', trader.trader_id)
-            .order('posted_at', { ascending: false })
-            .limit(1)
+          // 8. Получаем последний сигнал
+          const last_signal_at = parsedSignals?.[0]?.posted_at || null
           
-          const last_signal_at = lastSignal && lastSignal.length > 0 
-            ? lastSignal[0].posted_at 
-            : null
+          // 9. Средняя уверенность парсера
+          const avgConfidence = parsedSignals?.length > 0 
+            ? parsedSignals.reduce((sum, s) => sum + (parseFloat(s.confidence) || 0), 0) / parsedSignals.length 
+            : 0
           
           return {
             ...trader,
-            total_signals,
-            winrate_30d: Math.round(winrate_30d * 10) / 10, // Округляем до 1 знака
-            pnl_30d: Math.round(pnl_30d * 100) / 100, // Округляем до 2 знаков
-            last_signal_at
+            // Базовые счетчики (как у Дарена)
+            total_signals: totalRawSignals || 0,
+            valid_signals: validSignals,
+            executed_signals: totalExecuted,
+            
+            // ЧЕСТНАЯ СТАТИСТИКА (как у Дарена): "Вася дал 109 раз, из них 90 был TP1"
+            tp1_count: tp1Count,
+            tp2_count: tp2Count, 
+            sl_count: slCount,
+            be_count: beCount,
+            
+            // Процентные показатели
+            tp1_rate: Math.round(tp1Rate * 10) / 10,
+            tp2_rate: Math.round(tp2Rate * 10) / 10, 
+            sl_rate: Math.round(slRate * 10) / 10,
+            winrate_30d: Math.round(winrate_30d * 10) / 10,
+            
+            // Финансовые показатели
+            total_pnl: Math.round(totalPnl * 100) / 100,
+            avg_pnl: Math.round(avgPnl * 100) / 100,
+            pnl_30d: Math.round(pnl_30d * 100) / 100,
+            avg_win: Math.round(avgWin * 100) / 100,
+            avg_loss: Math.round(avgLoss * 100) / 100,
+            profit_factor: Math.round(profitFactor * 100) / 100,
+            
+            // Временные показатели
+            avg_time_to_tp1: Math.round(avgTimeToTP1),
+            
+            // Метаданные
+            last_signal_at,
+            avg_confidence: Math.round(avgConfidence * 10) / 10,
+            
+            // Строка статистики как у Дарена
+            stats_summary: `${totalExecuted} сигналов: ${tp1Count} TP1 (${Math.round(tp1Rate)}%), ${tp2Count} TP2 (${Math.round(tp2Rate)}%), ${slCount} SL (${Math.round(slRate)}%)`,
+            
+            // Дополнительные показатели качества
+            signal_quality: validSignals > 0 ? Math.round((validSignals / (totalRawSignals || 1)) * 100) : 0,
+            execution_rate: validSignals > 0 ? Math.round((totalExecuted / validSignals) * 100) : 0
           }
           
         } catch (statError) {

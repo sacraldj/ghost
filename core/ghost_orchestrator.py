@@ -25,7 +25,8 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import yaml
-import aioredis
+# Temporarily disable Redis due to compatibility issues
+aioredis = None
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -36,12 +37,28 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Импорты наших модулей (будут созданы)
 try:
     from utils.ghost_logger import GhostLogger
+except ImportError:
+    GhostLogger = None
+
+try:
     from utils.system_monitor import SystemMonitor
+except ImportError:
+    SystemMonitor = None
+
+try:
     from utils.config_manager import ConfigManager
+except ImportError:
+    ConfigManager = None
+
+try:
     from utils.database_manager import DatabaseManager
+except ImportError:
+    DatabaseManager = None
+
+try:
     from utils.notification_manager import NotificationManager
-except ImportError as e:
-    print(f"Warning: Could not import some modules: {e}")
+except ImportError:
+    NotificationManager = None
 
 # Настройка логирования
 logging.basicConfig(
@@ -228,6 +245,11 @@ class GhostOrchestrator:
     
     async def _init_redis(self):
         """Инициализация Redis"""
+        if not aioredis:
+            logger.warning("⚠️ aioredis not available, Redis disabled")
+            self.redis = None
+            return
+            
         if not self.config.get('redis', {}).get('enabled', False):
             logger.info("Redis disabled in config")
             return
@@ -244,8 +266,9 @@ class GhostOrchestrator:
     async def _init_database(self):
         """Инициализация базы данных"""
         try:
-            # self.db_manager = DatabaseManager(self.config['database'])
-            # await self.db_manager.initialize()
+            if DatabaseManager:
+                self.db_manager = DatabaseManager(self.config['database'])
+                await self.db_manager.initialize()
             logger.info("✅ Database manager initialized")
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}")
@@ -253,8 +276,9 @@ class GhostOrchestrator:
     async def _init_notifications(self):
         """Инициализация системы уведомлений"""
         try:
-            # self.notification_manager = NotificationManager(self.config)
-            # await self.notification_manager.initialize()
+            if NotificationManager:
+                self.notification_manager = NotificationManager(self.config)
+                await self.notification_manager.initialize()
             logger.info("✅ Notification manager initialized")
         except Exception as e:
             logger.error(f"❌ Notification manager initialization failed: {e}")
@@ -262,7 +286,8 @@ class GhostOrchestrator:
     async def _init_system_monitor(self):
         """Инициализация системного мониторинга"""
         try:
-            # self.system_monitor = SystemMonitor()
+            if SystemMonitor:
+                self.system_monitor = SystemMonitor()
             logger.info("✅ System monitor initialized")
         except Exception as e:
             logger.error(f"❌ System monitor initialization failed: {e}")
@@ -270,7 +295,8 @@ class GhostOrchestrator:
     async def _init_logger(self):
         """Инициализация логгера GHOST"""
         try:
-            # self.ghost_logger = GhostLogger(self.config)
+            if GhostLogger:
+                self.ghost_logger = GhostLogger(self.config)
             logger.info("✅ GHOST logger initialized")
         except Exception as e:
             logger.error(f"❌ GHOST logger initialization failed: {e}")
@@ -560,15 +586,12 @@ class GhostOrchestrator:
         )
     
     async def _save_system_status(self):
-        """Сохранение статуса системы в Redis"""
-        if not self.redis:
-            return
-            
+        """Сохранение статуса системы в Redis или файл"""
         try:
             status_data = {
                 'timestamp': datetime.utcnow().isoformat(),
                 'orchestrator_status': 'running' if self.running else 'stopped',
-                'system_metrics': self.system_metrics,
+                'system_metrics': self.system_metrics.copy(),
                 'modules': {
                     name: {
                         'status': status.status,
@@ -584,11 +607,22 @@ class GhostOrchestrator:
                 }
             }
             
-            await self.redis.setex(
-                'ghost:orchestrator:status',
-                300,  # TTL 5 минут
-                json.dumps(status_data, default=str)
-            )
+            # Convert datetime objects to strings for JSON serialization
+            status_data['system_metrics']['start_time'] = status_data['system_metrics']['start_time'].isoformat()
+            
+            # Try Redis first
+            if self.redis:
+                await self.redis.setex(
+                    'ghost:orchestrator:status',
+                    300,  # TTL 5 минут
+                    json.dumps(status_data, default=str)
+                )
+            else:
+                # Fallback to file
+                status_file = 'logs/orchestrator_status.json'
+                os.makedirs(os.path.dirname(status_file), exist_ok=True)
+                with open(status_file, 'w') as f:
+                    json.dump(status_data, f, indent=2, default=str)
             
         except Exception as e:
             logger.error(f"Failed to save system status: {e}")

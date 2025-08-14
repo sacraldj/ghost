@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import os
 from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Настройка логирования
 logging.basicConfig(

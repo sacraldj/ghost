@@ -1,12 +1,12 @@
-# Render.com deployment configuration for GHOST All-in-One Engine
+# Render.com deployment configuration for GHOST Unified Live System
 services:
-  # Unified Service for All GHOST Engines
+  # Unified Live Signal Processing System
   - type: web
-    name: ghost-all-engines
+    name: ghost-unified-live-system
     env: python
     repo: https://github.com/sacraldj/ghost.git
     branch: main
-    buildCommand: "pip install -r requirements.txt && pip install -r telegram_parsers/requirements.txt"
+    buildCommand: "pip install -r requirements.txt"
     startCommand: "python3 start_all.py"
     plan: free
     envVars:
@@ -14,15 +14,29 @@ services:
         value: "3.11"
       - key: PORT
         value: "8000"
+      # Supabase (обязательные)
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Telegram (для реальных сигналов)
       - key: TELEGRAM_API_ID
         sync: false
       - key: TELEGRAM_API_HASH
         sync: false
       - key: TELEGRAM_PHONE
         sync: false
-      - key: SUPABASE_URL
+      - key: TELEGRAM_SESSION_NAME
+        value: "ghost_render_session"
+      # AI Providers (опциональные, для fallback)
+      - key: OPENAI_API_KEY
         sync: false
-      - key: SUPABASE_ANON_KEY
+      - key: GEMINI_API_KEY
         sync: false
+      # News & Other APIs (опциональные)
       - key: NEWS_API_KEY
+        sync: false
+      - key: BYBIT_API_KEY
+        sync: false
+      - key: BYBIT_API_SECRET
         sync: false

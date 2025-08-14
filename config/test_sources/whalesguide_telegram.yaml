@@ -1,0 +1,33 @@
+check_interval: 60
+connection_params:
+  api_hash: YOUR_API_HASH
+  api_id: YOUR_API_ID
+  channel_id: '-1001234567890'
+  phone: YOUR_PHONE
+created_at: '2025-08-13T21:32:15.412788'
+description: Main crypto signals channel
+filters:
+  keywords_exclude:
+  - spam
+  - promo
+  - advertisement
+  keywords_include:
+  - longing
+  - buying
+  - long
+  - short
+  min_confidence: 0.8
+last_error: null
+last_success: null
+max_retries: 3
+name: Whales Guide
+parser_config:
+  auto_detect_trader: true
+  confidence_threshold: 0.7
+parser_type: whales_crypto_parser
+priority: 10
+retry_delay: 300
+source_id: whalesguide_telegram
+source_type: telegram_channel
+status: active
+updated_at: '2025-08-13T21:32:15.412860'

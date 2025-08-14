@@ -12,6 +12,11 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import hashlib
+import os
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from nltk.sentiment import SentimentIntensityAnalyzer
 import nltk
 import yaml

@@ -691,11 +691,182 @@ model TraderStatsDaily {
   @@map("trader_stats_daily")
 }
 
-// Добавляем новые поля к существующей модели CriticalNews
-// В модели CriticalNews добавляем поля для связи с ценовыми данными:
-// symbol          String? // Символ, к которому относится новость
-// priceAtNews     Decimal? @map("price_at_news") @db.Decimal(20, 8) // Цена в момент появления новости
-// priceChange1h   Decimal? @map("price_change_1h") @db.Decimal(10, 4) // Изменение цены за 1 час
-// priceChange4h   Decimal? @map("price_change_4h") @db.Decimal(10, 4) // Изменение цены за 4 часа
-// volumeChange1h  Decimal? @map("volume_change_1h") @db.Decimal(10, 4) // Изменение объема за 1 час
-// isMarketMoving  Boolean @default(false) @map("is_market_moving") // Повлияла ли новость на рынок
+// ========================================
+// UNIFIED SIGNAL SYSTEM MODELS
+// ========================================
+
+// Таблица источников сигналов
+model SignalSource {
+  sourceId         String   @id @map("source_id")
+  sourceType       String   @map("source_type") // telegram_channel, discord, rss, api
+  name             String
+  connectionParams Json     @default("{}") @map("connection_params")
+  parserType       String   @default("default") @map("parser_type")
+  isActive         Boolean  @default(true) @map("is_active")
+  priority         Int      @default(5)
+  minConfidence    Decimal  @default(0.7) @db.Decimal(3,2) @map("min_confidence")
+  keywordsFilter   String[] @map("keywords_filter")
+  excludeKeywords  String[] @map("exclude_keywords")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([sourceType, isActive])
+  @@index([isActive])
+  @@map("signal_sources")
+}
+
+// Таблица unified сигналов
+model UnifiedSignal {
+  signalId              String    @id @map("signal_id")
+  rawId                 String?   @map("raw_id")
+  traderId              String    @map("trader_id")
+  sourceType            String    @map("source_type")
+  rawText               String    @map("raw_text")
+  originalMessageId     String?   @map("original_message_id")
+  
+  // Временные метки
+  receivedAt            DateTime  @map("received_at")
+  parsedAt              DateTime? @map("parsed_at")
+  
+  // Торговые данные
+  symbol                String
+  rawSymbol             String?   @map("raw_symbol")
+  side                  String    // LONG/SHORT
+  
+  // Вход
+  entryType             String    @default("range") @map("entry_type") // range, market, limit
+  entrySingle           Decimal?  @map("entry_single") @db.Decimal(20,8)
+  entryMin              Decimal?  @map("entry_min") @db.Decimal(20,8)
+  entryMax              Decimal?  @map("entry_max") @db.Decimal(20,8)
+  entryZone             Decimal[] @map("entry_zone") @db.Decimal(20,8)
+  avgEntryPrice         Decimal?  @map("avg_entry_price") @db.Decimal(20,8)
+  
+  // Цели (до 7 уровней)
+  targets               Decimal[] @db.Decimal(20,8)
+  tp1                   Decimal?  @db.Decimal(20,8)
+  tp2                   Decimal?  @db.Decimal(20,8)
+  tp3                   Decimal?  @db.Decimal(20,8)
+  tp4                   Decimal?  @db.Decimal(20,8)
+  tp5                   Decimal?  @db.Decimal(20,8)
+  tp6                   Decimal?  @db.Decimal(20,8)
+  tp7                   Decimal?  @db.Decimal(20,8)
+  
+  // Риск-менеджмент
+  sl                    Decimal?  @db.Decimal(20,8)
+  slType                String    @default("fixed") @map("sl_type") // fixed, trailing, be
+  
+  // Плечо и объем
+  leverage              String?
+  sourceLeverage        String?   @map("source_leverage")
+  volumeSplit           String?   @map("volume_split")
+  
+  // Метаданные парсинга
+  parserType            String    @default("unknown") @map("parser_type")
+  parsingMethod         String    @default("rule_based") @map("parsing_method") // rule_based, ai_assisted, hybrid
+  confidence            Decimal   @default(0.0) @db.Decimal(5,2)
+  
+  // AI-ассистированный парсинг
+  aiUsed                Boolean   @default(false) @map("ai_used")
+  aiModel               String?   @map("ai_model")
+  aiConfidence          Decimal?  @db.Decimal(5,2) @map("ai_confidence")
+  aiExplanation         String?   @map("ai_explanation")
+  
+  // Детекция трейдера
+  detectedTraderStyle   String?   @map("detected_trader_style")
+  detectionConfidence   Decimal?  @db.Decimal(5,2) @map("detection_confidence")
+  
+  // Статус и валидация
+  status                String    @default("raw") // raw, parsed, ai_parsed, failed, validated
+  isValid               Boolean   @default(false) @map("is_valid")
+  validationErrors      String[]  @map("validation_errors")
+  
+  // Дополнительная информация
+  reason                String?
+  note                  String?
+  
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([traderId, receivedAt])
+  @@index([symbol, receivedAt])
+  @@index([status])
+  @@index([isValid])
+  @@index([parsingMethod])
+  @@map("unified_signals")
+}
+
+// Таблица статистики парсеров
+model ParserStats {
+  id                    Int       @id @default(autoincrement())
+  parserType            String    @map("parser_type")
+  date                  DateTime  @db.Date
+  
+  // Счетчики
+  totalAttempts         Int       @default(0) @map("total_attempts")
+  successfulParses      Int       @default(0) @map("successful_parses")
+  failedParses          Int       @default(0) @map("failed_parses")
+  aiFallbackUsed        Int       @default(0) @map("ai_fallback_used")
+  
+  // Метрики качества
+  avgConfidence         Decimal?  @db.Decimal(5,2) @map("avg_confidence")
+  avgProcessingTimeMs   Int?      @map("avg_processing_time_ms")
+  
+  // Источники
+  sourcesProcessed      String[]  @map("sources_processed")
+  tradersDetected       String[]  @map("traders_detected")
+  
+  createdAt             DateTime  @default(now()) @map("created_at")
+  
+  @@unique([parserType, date])
+  @@index([date])
+  @@index([parserType, date])
+  @@map("parser_stats")
+}
+
+// Таблица конфигурации AI парсеров
+model AiParserConfig {
+  id                    Int       @id @default(autoincrement())
+  aiProvider            String    @map("ai_provider") // openai, gemini, claude
+  modelName             String    @map("model_name")
+  isActive              Boolean   @default(true) @map("is_active")
+  
+  // Настройки модели
+  temperature           Decimal   @default(0.1) @db.Decimal(3,2)
+  maxTokens             Int       @default(500) @map("max_tokens")
+  systemPrompt          String?   @map("system_prompt")
+  
+  // Метрики использования
+  requestsToday         Int       @default(0) @map("requests_today")
+  successfulParsesToday Int       @default(0) @map("successful_parses_today")
+  costTodayUsd          Decimal   @default(0.0) @db.Decimal(10,4) @map("cost_today_usd")
+  
+  // Лимиты
+  dailyRequestLimit     Int       @default(1000) @map("daily_request_limit")
+  costLimitUsd          Decimal   @default(50.0) @db.Decimal(10,2) @map("cost_limit_usd")
+  
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("ai_parser_config")
+}
+
+// Таблица системной статистики
+model SystemStats {
+  id               Int       @id @default(autoincrement())
+  timestamp        DateTime  @default(now())
+  component        String
+  stats            Json
+  
+  // Дополнительные метрики
+  activeSources    Int?      @map("active_sources")
+  recentTraders    Int?      @map("recent_traders")
+  memoryUsageMb    Int?      @map("memory_usage_mb")
+  cpuUsagePercent  Decimal?  @db.Decimal(5,2) @map("cpu_usage_percent")
+  
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([timestamp])
+  @@index([component, timestamp])
+  @@map("system_stats")
+}

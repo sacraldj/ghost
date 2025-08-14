@@ -1,0 +1,275 @@
+{
+  "sources": [
+    {
+      "source_id": "whales_guide_main",
+      "source_type": "telegram_channel",
+      "name": "Whales Crypto Guide",
+      "connection_params": {
+        "channel_id": "-1001234567890",
+        "username": "@whalesguide"
+      },
+      "parser_type": "whales_crypto_parser",
+      "is_active": true,
+      "priority": 10,
+      "min_confidence": 0.8,
+      "keywords_filter": [
+        "longing",
+        "buying",
+        "entry:",
+        "targets:",
+        "stoploss:",
+        "long (",
+        "short ("
+      ],
+      "exclude_keywords": [
+        "good morning",
+        "доброе утро",
+        "анализ рынка",
+        "market analysis",
+        "новости",
+        "news"
+      ],
+      "notes": "Основной канал Whales Guide для торговых сигналов"
+    },
+    {
+      "source_id": "2trade_slivaem",
+      "source_type": "telegram_channel", 
+      "name": "2Trade - slivaeminfo",
+      "connection_params": {
+        "channel_id": "-1001234567891",
+        "username": "@slivaeminfo"
+      },
+      "parser_type": "2trade_parser",
+      "is_active": true,
+      "priority": 9,
+      "min_confidence": 0.7,
+      "keywords_filter": [
+        "long",
+        "short",
+        "вход",
+        "entry",
+        "стоп",
+        "stop",
+        "usdt"
+      ],
+      "exclude_keywords": [
+        "реклама",
+        "advertisement",
+        "подписка",
+        "subscription"
+      ],
+      "notes": "Канал 2Trade с русскоязычными сигналами"
+    },
+    {
+      "source_id": "crypto_hub_vip",
+      "source_type": "telegram_channel",
+      "name": "Crypto Hub VIP",
+      "connection_params": {
+        "channel_id": "-1001234567892",
+        "username": "@cryptohubvip"
+      },
+      "parser_type": "crypto_hub_parser", 
+      "is_active": true,
+      "priority": 8,
+      "min_confidence": 0.75,
+      "keywords_filter": [
+        "entry zone",
+        "tp1:",
+        "tp2:",
+        "stop loss:",
+        "leverage:",
+        "long",
+        "short"
+      ],
+      "exclude_keywords": [
+        "market update",
+        "analysis",
+        "обновление рынка"
+      ],
+      "notes": "VIP канал Crypto Hub с англоязычными сигналами"
+    },
+    {
+      "source_id": "coinpulse_signals",
+      "source_type": "telegram_channel",
+      "name": "CoinPulse Signals", 
+      "connection_params": {
+        "channel_id": "-1001234567893",
+        "username": "@coinpulsesignals"
+      },
+      "parser_type": "coinpulse_parser",
+      "is_active": true,
+      "priority": 7,
+      "min_confidence": 0.7,
+      "keywords_filter": [
+        "pair:",
+        "#long",
+        "#short", 
+        "entry:",
+        "stoploss:"
+      ],
+      "exclude_keywords": [
+        "market news",
+        "новости рынка"
+      ],
+      "notes": "CoinPulse канал с форматированными сигналами"
+    },
+    {
+      "source_id": "test_channel_universal",
+      "source_type": "telegram_channel",
+      "name": "Test Channel Universal",
+      "connection_params": {
+        "channel_id": "-1001234567899",
+        "username": "@testchannel"
+      },
+      "parser_type": "whales_universal",
+      "is_active": false,
+      "priority": 5,
+      "min_confidence": 0.6,
+      "keywords_filter": [
+        "buy",
+        "sell",
+        "entry",
+        "target",
+        "stop"
+      ],
+      "exclude_keywords": [
+        "test message",
+        "тестовое сообщение"
+      ],
+      "notes": "Тестовый канал для отладки универсального парсера"
+    },
+    {
+      "source_id": "discord_vip_traders",
+      "source_type": "discord",
+      "name": "VIP Traders Discord",
+      "connection_params": {
+        "guild_id": "123456789012345678",
+        "channel_id": "987654321098765432",
+        "bot_token": "DISCORD_BOT_TOKEN_FROM_ENV"
+      },
+      "parser_type": "discord_parser",
+      "is_active": false,
+      "priority": 6,
+      "min_confidence": 0.7,
+      "keywords_filter": [
+        "🔔 new trade alert",
+        "entry:",
+        "take profit:",
+        "stop loss:"
+      ],
+      "exclude_keywords": [
+        "general chat",
+        "off topic"
+      ],
+      "notes": "Discord сервер с VIP сигналами (пока не активен)"
+    },
+    {
+      "source_id": "rss_feed_crypto",
+      "source_type": "rss",
+      "name": "Crypto RSS Feed",
+      "connection_params": {
+        "feed_url": "https://example.com/crypto-signals.rss",
+        "update_interval": 300
+      },
+      "parser_type": "rss_parser",
+      "is_active": false,
+      "priority": 4,
+      "min_confidence": 0.5,
+      "keywords_filter": [
+        "signal",
+        "trade alert",
+        "buy recommendation"
+      ],
+      "exclude_keywords": [
+        "news",
+        "market update"
+      ],
+      "notes": "RSS фид с торговыми сигналами (экспериментальный)"
+    },
+    {
+      "source_id": "api_signals_external",
+      "source_type": "api",
+      "name": "External API Signals",
+      "connection_params": {
+        "api_url": "https://api.example.com/signals",
+        "api_key": "API_KEY_FROM_ENV",
+        "poll_interval": 60
+      },
+      "parser_type": "api_parser",
+      "is_active": false,
+      "priority": 3,
+      "min_confidence": 0.8,
+      "keywords_filter": [],
+      "exclude_keywords": [],
+      "notes": "Внешний API с торговыми сигналами (требует настройки)"
+    }
+  ],
+  "global_settings": {
+    "default_min_confidence": 0.7,
+    "default_priority": 5,
+    "max_sources_per_type": 10,
+    "signal_timeout_minutes": 60,
+    "duplicate_detection_window_minutes": 30,
+    "auto_disable_failing_sources": true,
+    "failure_threshold": 10,
+    "stats_retention_days": 90
+  },
+  "parser_mappings": {
+    "whales_crypto_parser": {
+      "description": "Специализированный парсер для Whales Guide",
+      "supported_languages": ["en"],
+      "patterns": ["longing #", "entry:", "targets:", "stoploss:"]
+    },
+    "2trade_parser": {
+      "description": "Парсер для канала 2Trade с русскими сигналами",
+      "supported_languages": ["ru", "en"],
+      "patterns": ["long", "short", "вход:", "стоп:"]
+    },
+    "crypto_hub_parser": {
+      "description": "Парсер для Crypto Hub VIP",
+      "supported_languages": ["en"],
+      "patterns": ["entry zone:", "tp1:", "tp2:", "stop loss:"]
+    },
+    "coinpulse_parser": {
+      "description": "Парсер для CoinPulse формата",
+      "supported_languages": ["en"],
+      "patterns": ["pair:", "#long", "#short", "entry:", "stoploss:"]
+    },
+    "whales_universal": {
+      "description": "Универсальный парсер для Whales-подобных форматов",
+      "supported_languages": ["en", "ru"],
+      "patterns": ["buy", "sell", "long", "short", "entry", "target"]
+    },
+    "discord_parser": {
+      "description": "Парсер для Discord сообщений",
+      "supported_languages": ["en"],
+      "patterns": ["🔔 new trade alert", "entry:", "take profit:"]
+    },
+    "rss_parser": {
+      "description": "Парсер для RSS фидов",
+      "supported_languages": ["en"],
+      "patterns": ["signal", "trade alert", "recommendation"]
+    },
+    "api_parser": {
+      "description": "Парсер для внешних API",
+      "supported_languages": ["en"],
+      "patterns": []
+    }
+  },
+  "ai_fallback_config": {
+    "enabled": true,
+    "preferred_provider": "openai",
+    "fallback_provider": "gemini",
+    "max_retries": 2,
+    "confidence_threshold": 0.6,
+    "cost_limit_daily_usd": 50.0,
+    "request_limit_daily": 1000
+  },
+  "metadata": {
+    "config_version": "1.0",
+    "created_at": "2025-08-13T21:00:00Z",
+    "last_updated": "2025-08-13T21:00:00Z",
+    "created_by": "unified_signal_system",
+    "description": "Конфигурация источников сигналов для GHOST Unified Signal System"
+  }
+}

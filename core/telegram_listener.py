@@ -11,10 +11,17 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.signal_router import route_signal
 from core.trader_registry import TraderRegistry
 
@@ -42,7 +49,7 @@ class TelegramListener:
     def __init__(self, api_id: str, api_hash: str, phone: str = None):
         self.api_id = api_id
         self.api_hash = api_hash
-        self.phone = phone
+        self.phone = phone or os.getenv('TELEGRAM_PHONE')
         
         # Telegram клиент
         self.client: Optional[TelegramClient] = None
@@ -69,14 +76,67 @@ class TelegramListener:
         
         logger.info("Telegram Listener initialized")
     
+    async def _get_code_from_telegram(self):
+        """Автоматическое получение кода из Telegram сообщений"""
+        try:
+            # Создаем временный клиент для получения кода
+            temp_client = TelegramClient(':memory:', self.api_id, self.api_hash)
+            await temp_client.connect()
+            
+            if not await temp_client.is_user_authorized():
+                logger.info("📱 Отправляем запрос кода на телефон...")
+                await temp_client.send_code_request(self.phone)
+                
+                # Ждем код в сообщениях от Telegram
+                logger.info("⏳ Ожидаем код в сообщениях от Telegram (777000)...")
+                
+                async for message in temp_client.iter_messages('777000', limit=5):
+                    if message.message and 'code' in message.message.lower():
+                        # Извлекаем код из сообщения (обычно 5-6 цифр)
+                        import re
+                        code_match = re.search(r'\\b(\\d{5,6})\\b', message.message)
+                        if code_match:
+                            code = code_match.group(1)
+                            logger.info(f"✅ Получен код автоматически: {code}")
+                            await temp_client.disconnect()
+                            return code
+                
+                logger.error("❌ Код не найден в сообщениях")
+            
+            await temp_client.disconnect()
+            return input("📱 Введите код из SMS: ")  # Fallback на ручной ввод
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения кода: {e}")
+            return input("📱 Введите код из SMS: ")  # Fallback
+    
     async def initialize(self):
         """Инициализация Telegram клиента"""
         try:
             # Создаем клиент
-            self.client = TelegramClient('ghost_session', self.api_id, self.api_hash)
+            # Путь к сессии относительно корня проекта
+            session_path = os.path.join('..', 'ghost_session')
+            self.client = TelegramClient(session_path, self.api_id, self.api_hash)
             
-            # Подключаемся
-            await self.client.start(phone=self.phone)
+            # Подключаемся с автоматической авторизацией
+            try:
+                # Пробуем подключиться с существующей сессией
+                await self.client.start()
+            except Exception as auth_error:
+                logger.info(f"🔑 Сессия не найдена, выполняем авторизацию: {auth_error}")
+                
+                # Автоматическая авторизация с телефоном из .env
+                try:
+                    await self.client.start(
+                        phone=self.phone,
+                        code_callback=self._get_code_from_telegram,
+                        password=os.getenv('TELEGRAM_PASSWORD', '')
+                    )
+                    logger.info("✅ Автоматическая авторизация успешна")
+                except Exception as e:
+                    logger.error(f"❌ Автоматическая авторизация не удалась: {e}")
+                    logger.info("💡 Проверьте TELEGRAM_PHONE и TELEGRAM_CODE в .env файле")
+                    return False
             
             # Проверяем авторизацию
             if await self.client.is_user_authorized():
@@ -381,5 +441,40 @@ async def test_telegram_listener():
     
     return listener
 
+async def main():
+    """Основная функция для запуска Telegram Listener"""
+    import os
+    
+    # Получаем переменные из окружения
+    api_id = os.getenv('TELEGRAM_API_ID')
+    api_hash = os.getenv('TELEGRAM_API_HASH') 
+    phone = os.getenv('TELEGRAM_PHONE')
+    
+    if not api_id or not api_hash:
+        logger.error("❌ TELEGRAM_API_ID и TELEGRAM_API_HASH обязательны")
+        return
+    
+    try:
+        # Создаем listener
+        listener = TelegramListener(api_id, api_hash, phone)
+        
+        # Загружаем конфигурацию каналов
+        config_path = os.path.join('..', 'config', 'telegram_channels.json')
+        listener.load_channels_from_config(config_path)
+        
+        # Инициализируем
+        if await listener.initialize():
+            logger.info("🟢 Telegram Listener запущен")
+            
+            # Запускаем прослушивание
+            await listener.start_listening()
+        else:
+            logger.error("❌ Не удалось инициализировать Telegram Listener")
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка в Telegram Listener: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
 if __name__ == "__main__":
-    asyncio.run(test_telegram_listener())
+    asyncio.run(main())
