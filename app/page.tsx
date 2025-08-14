@@ -1,43 +1,47 @@
-'use client'
-
-import { useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { useRouter } from 'next/navigation'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
-)
+import TelegramSignalsDashboard from '../components/TelegramSignalsDashboard'
 
 export default function Home() {
-  const router = useRouter()
-
-  useEffect(() => {
-    checkUser()
-  }, [])
-
-  const checkUser = async () => {
-    try {
-      if (!supabase) {
-        router.push('/auth')
-        return
-      }
-      
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.push('/dashboard')
-      } else {
-        router.push('/auth')
-      }
-    } catch (error) {
-      console.error('Auth check error:', error)
-      router.push('/auth')
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-[#0f0f23] flex items-center justify-center">
-      <div className="text-white text-xl">Перенаправление...</div>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <h1 className="text-3xl font-bold text-gray-900">
+                🎯 GHOST Trading System
+              </h1>
+              <span className="ml-3 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                Live
+              </span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="text-sm text-gray-500">
+                Real-time data updates
+              </div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </header>
+      
+      <main className="max-w-7xl mx-auto py-6">
+        <TelegramSignalsDashboard />
+      </main>
+      
+      <footer className="bg-white border-t mt-12">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              © 2025 GHOST Trading System - Real-time Telegram Signals
+            </div>
+            <div className="flex space-x-4 text-sm text-gray-500">
+              <span>📊 Market Data</span>
+              <span>📰 News Feed</span>
+              <span>📡 Live Signals</span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
-} 
+}

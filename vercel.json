@@ -1,13 +1,40 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "framework": "nextjs",
-  "installCommand": "npm install --legacy-peer-deps",
-  "devCommand": "npm run dev",
-  "regions": ["iad1"],
+  "version": 2,
+  "name": "ghost-trading-system",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
+    "TELEGRAM_API_ID": "@telegram_api_id",
+    "TELEGRAM_API_HASH": "@telegram_api_hash",
+    "TELEGRAM_PHONE": "@telegram_phone",
+    "OPENAI_API_KEY": "@openai_api_key",
+    "NEWS_API_KEY": "@news_api_key"
+  },
   "functions": {
-    "app/api/**/*.ts": {
+    "app/api/telegram-signals/route.ts": {
       "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/collect-data",
+      "schedule": "*/1 * * * *"
+    }
+  ]
 }
