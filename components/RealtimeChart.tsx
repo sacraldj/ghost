@@ -100,10 +100,10 @@ export default function RealtimeChart() {
         }, 3000)
       }
 
-      wsRef.current.onerror = (error) => {
+      wsRef.current.onerror = (error: Event) => {
         setError('WebSocket connection failed')
         setIsConnected(false)
-        console.error('WebSocket error:', error?.message || 'Unknown WebSocket error')
+        console.error('WebSocket error:', error.type || 'Connection failed')
       }
 
     } catch (err) {

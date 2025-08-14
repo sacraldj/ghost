@@ -99,6 +99,9 @@ class ChannelManager:
         # Создаем директорию конфигов если не существует
         os.makedirs(config_dir, exist_ok=True)
         
+        # Автоматически загружаем источники из JSON конфигурации
+        self.load_sources_from_json()
+        
         logger.info(f"Channel Manager initialized with config dir: {config_dir}")
     
     def register_parser(self, parser_type: str, parser_class: Callable):
@@ -128,6 +131,75 @@ class ChannelManager:
         except Exception as e:
             logger.error(f"Error adding source {source_config.source_id}: {e}")
             return False
+    
+    def load_sources_from_json(self) -> int:
+        """Загрузка источников из JSON конфигурации"""
+        loaded_count = 0
+        json_config_path = "config/sources.json"
+        
+        try:
+            if not os.path.exists(json_config_path):
+                logger.warning(f"JSON config file not found: {json_config_path}")
+                return 0
+                
+            with open(json_config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+            
+            sources = config_data.get('sources', [])
+            
+            for source_data in sources:
+                try:
+                    # Создаем SourceConfig из JSON данных
+                    source_config = self._config_from_json_dict(source_data)
+                    
+                    if source_config and source_data.get('is_active', False):
+                        # Добавляем источник в реестр
+                        self.sources[source_config.source_id] = source_config
+                        self.stats[source_config.source_id] = SourceStats(source_config.source_id)
+                        loaded_count += 1
+                        
+                        logger.info(f"✅ Loaded active source: {source_config.name} ({source_config.source_id})")
+                    else:
+                        logger.debug(f"⏸️ Skipped inactive source: {source_data.get('name', 'Unknown')}")
+                        
+                except Exception as e:
+                    logger.error(f"Error loading source from JSON: {e}")
+                    
+            logger.info(f"📡 Loaded {loaded_count} active sources from JSON config")
+            return loaded_count
+            
+        except Exception as e:
+            logger.error(f"Error loading sources from JSON config: {e}")
+            return 0
+    
+    def _config_from_json_dict(self, data: Dict) -> Optional[SourceConfig]:
+        """Создание SourceConfig из JSON данных"""
+        try:
+            # Преобразуем source_type в enum
+            source_type = SourceType(data.get('source_type', 'telegram_channel'))
+            
+            # Создаем SourceConfig
+            config = SourceConfig(
+                source_id=data.get('source_id', ''),
+                source_type=source_type,
+                name=data.get('name', ''),
+                description=data.get('notes', ''),
+                connection_params=data.get('connection_params', {}),
+                parser_type=data.get('parser_type', 'whales_universal'),
+                parser_config={},
+                filters={
+                    'keywords_include': data.get('keywords_filter', []),
+                    'keywords_exclude': data.get('exclude_keywords', [])
+                },
+                status=SourceStatus.ACTIVE if data.get('is_active', False) else SourceStatus.DISABLED,
+                priority=data.get('priority', 100)
+            )
+            
+            return config
+            
+        except Exception as e:
+            logger.error(f"Error creating SourceConfig from JSON: {e}")
+            return None
     
     def load_sources_from_config(self) -> int:
         """Загрузка всех источников из конфигурационных файлов"""

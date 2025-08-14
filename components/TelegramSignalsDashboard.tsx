@@ -177,14 +177,14 @@ const TelegramSignalsDashboard: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="cursor-card space-y-6">
       {/* Заголовок */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">📱 Telegram Сигналы</h1>
-          <p className="text-gray-600 mt-1">Реальные торговые сигналы из Telegram каналов</p>
+          <h1 className="text-3xl font-bold cursor-gradient-text">📱 Telegram Сигналы</h1>
+          <p className="text-gray-400 mt-1">Реальные торговые сигналы из Telegram каналов</p>
         </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
+        <div className="flex items-center space-x-2 text-sm text-gray-400">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span>Обновлено: {formatTime(new Date().toISOString())}</span>
         </div>
@@ -236,40 +236,30 @@ const TelegramSignalsDashboard: React.FC = () => {
       {/* Статистика */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-              <div className="text-sm text-gray-600">Всего сигналов</div>
-            </CardContent>
-          </Card>
+          <div className="cursor-stat-card">
+            <div className="cursor-stat-value text-blue-400">{stats.total}</div>
+            <div className="cursor-stat-label">Всего сигналов</div>
+          </div>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-green-600">{stats.byDirection.LONG}</div>
-              <div className="text-sm text-gray-600">LONG сигналов</div>
-            </CardContent>
-          </Card>
+          <div className="cursor-stat-card">
+            <div className="cursor-stat-value text-green-400">{stats.byDirection.LONG}</div>
+            <div className="cursor-stat-label">LONG сигналов</div>
+          </div>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-red-600">{stats.byDirection.SHORT}</div>
-              <div className="text-sm text-gray-600">SHORT сигналов</div>
-            </CardContent>
-          </Card>
+          <div className="cursor-stat-card">
+            <div className="cursor-stat-value text-red-400">{stats.byDirection.SHORT}</div>
+            <div className="cursor-stat-label">SHORT сигналов</div>
+          </div>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-purple-600">{stats.avgConfidence}</div>
-              <div className="text-sm text-gray-600">Средняя уверенность</div>
-            </CardContent>
-          </Card>
+          <div className="cursor-stat-card">
+            <div className="cursor-stat-value text-purple-400">{stats.avgConfidence}</div>
+            <div className="cursor-stat-label">Средняя уверенность</div>
+          </div>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-orange-600">{stats.recentSignals}</div>
-              <div className="text-sm text-gray-600">За последний час</div>
-            </CardContent>
-          </Card>
+          <div className="cursor-stat-card">
+            <div className="cursor-stat-value text-orange-400">{stats.recentSignals}</div>
+            <div className="cursor-stat-label">За последний час</div>
+          </div>
         </div>
       )}
 
