@@ -7,7 +7,7 @@
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS instruments (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   ticker_symbol TEXT NOT NULL UNIQUE, -- ORDIUSDT
   instrument_name TEXT, -- Ordinals USDT Perpetual
   instrument_type TEXT NOT NULL, -- Crypto, Stock, Future, Option
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS instruments (
   exchange_code TEXT NOT NULL, -- BINANCE
   tick_size DECIMAL(20,8), -- 0.001
   contract_size DECIMAL(20,8), -- 1.0
-  multiplier INTEGER DEFAULT 1,
+    multiplier INTEGER DEFAULT 1,
   margin_requirements JSONB, -- {"initial": 0.1, "maintenance": 0.05}
   listing_date TIMESTAMP,
   delisting_date TIMESTAMP,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS instruments (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS exchanges (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   exchange_code TEXT NOT NULL UNIQUE, -- BINANCE
   exchange_name TEXT NOT NULL, -- Binance Futures
   timezone TEXT DEFAULT 'UTC',
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS exchanges (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS signal_sources (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   source_code TEXT NOT NULL UNIQUE, -- whales_crypto_guide
   source_name TEXT NOT NULL, -- Whales Crypto Guide
   source_type TEXT NOT NULL, -- telegram, discord, twitter, internal
@@ -103,10 +103,10 @@ CREATE TABLE IF NOT EXISTS signals_raw (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS signals_parsed (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   raw_signal_id UUID REFERENCES signals_raw(id),
   source_id UUID REFERENCES signal_sources(id),
-  instrument_id UUID REFERENCES instruments(id),
+    instrument_id UUID REFERENCES instruments(id),
   
   -- Основная информация о сигнале
   signal_type TEXT NOT NULL, -- LONG, SHORT, CLOSE, UPDATE
@@ -163,17 +163,17 @@ CREATE TABLE IF NOT EXISTS signals_parsed (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS market_snapshots (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   signal_id UUID REFERENCES signals_parsed(id),
   instrument_id UUID REFERENCES instruments(id),
   snapshot_timestamp TIMESTAMP NOT NULL,
   
   -- OHLCV данные
   current_price DECIMAL(20,8),
-  open_price DECIMAL(20,8),
-  high_price DECIMAL(20,8),
-  low_price DECIMAL(20,8),
-  close_price DECIMAL(20,8),
+    open_price DECIMAL(20,8),
+    high_price DECIMAL(20,8),
+    low_price DECIMAL(20,8),
+    close_price DECIMAL(20,8),
   volume_24h DECIMAL(30,8),
   volume_1h DECIMAL(30,8),
   
@@ -197,13 +197,13 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
   long_short_ratio DECIMAL(10,6),
   
   -- Технические индикаторы
-  rsi_14 DECIMAL(5,2),
+    rsi_14 DECIMAL(5,2),
   rsi_7 DECIMAL(5,2),
-  macd_line DECIMAL(20,8),
-  macd_signal DECIMAL(20,8),
-  macd_histogram DECIMAL(20,8),
-  sma_20 DECIMAL(20,8),
-  sma_50 DECIMAL(20,8),
+    macd_line DECIMAL(20,8),
+    macd_signal DECIMAL(20,8),
+    macd_histogram DECIMAL(20,8),
+    sma_20 DECIMAL(20,8),
+    sma_50 DECIMAL(20,8),
   sma_200 DECIMAL(20,8),
   ema_12 DECIMAL(20,8),
   ema_26 DECIMAL(20,8),
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS trades (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   signal_id UUID REFERENCES signals_parsed(id),
   instrument_id UUID REFERENCES instruments(id),
   source_id UUID REFERENCES signal_sources(id),
@@ -346,8 +346,8 @@ CREATE TABLE IF NOT EXISTS trades (
   -- Качественные метрики
   trade_quality_score DECIMAL(3,2), -- Оценка качества исполнения
   signal_accuracy_score DECIMAL(3,2), -- Точность следования сигналу
-  
-  -- Метаданные
+    
+    -- Метаданные
   notes TEXT,
   tags TEXT[],
   is_paper_trade BOOLEAN DEFAULT false,
@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS trades (
 -- =====================================
 
 CREATE TABLE IF NOT EXISTS performance_analytics (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   entity_type TEXT NOT NULL, -- SIGNAL_SOURCE, TRADER, STRATEGY, INSTRUMENT
   entity_id UUID NOT NULL, -- ID источника/трейдера/стратегии
   analysis_period_start TIMESTAMP NOT NULL,

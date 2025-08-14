@@ -200,9 +200,9 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('API error:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
-      signals: [],
+        signals: [],
       count: 0 
     }, { status: 500 })
   }
@@ -227,9 +227,9 @@ export async function POST(request: NextRequest) {
 
     // Получаем ID источника (по умолчанию - whales_crypto_guide)
     const sourceResult = await supabase
-      .table('signal_sources')
-      .select('id')
-      .eq('source_code', body.source_code || 'whales_crypto_guide')
+      .from('signal_sources')
+      .select('source_id')
+      .eq('source_id', body.source_code || 'whales_guide_main')
       .single()
 
     if (!sourceResult.data) {
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data, error } = await supabase
-      .table('signals_parsed')
+      .from('signals_parsed')
       .insert([signalData])
       .select()
 

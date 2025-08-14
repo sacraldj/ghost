@@ -197,8 +197,8 @@ class SimpleNewsEngine:
                             logger.warning(f"  - {news.title[:100]}... (настроение: {news.sentiment:.2f})")
                 
                 # Пауза перед следующим циклом (5 минут)
-                logger.info("⏳ Ожидание 5 минут до следующего сбора...")
-                await asyncio.sleep(300)
+                logger.info("⏳ Ожидание 1 минуты до следующего сбора...")
+                await asyncio.sleep(60)  # 1 минута для реального времени
                 
             except Exception as e:
                 logger.error(f"Ошибка в цикле: {e}")
