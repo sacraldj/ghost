@@ -24,6 +24,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.signal_router import route_signal
 from core.trader_registry import TraderRegistry
+from signals.image_parser import get_image_parser
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,9 @@ class TelegramListener:
         
         # Обработанные сообщения (анти-дубликаты)
         self.processed_messages: Set[str] = set()
+        
+        # Парсер изображений
+        self.image_parser = get_image_parser()
         
         logger.info("Telegram Listener initialized")
     
@@ -234,8 +238,13 @@ class TelegramListener:
                 return
             
             # Получаем текст сообщения
-            message_text = event.message.text
-            if not message_text:
+            message_text = event.message.text or ""
+            
+            # Проверяем наличие изображения
+            has_image = bool(event.message.photo or event.message.document)
+            
+            # Если нет ни текста, ни изображения - пропускаем
+            if not message_text and not has_image:
                 return
             
             # Генерируем уникальный ID сообщения для анти-дубликатов
@@ -255,8 +264,11 @@ class TelegramListener:
             if not self._message_passes_filters(message_text, channel_config):
                 return
             
-            # Проверяем, похоже ли на торговый сигнал
-            if not self._looks_like_signal(message_text):
+            # Проверяем, похоже ли на торговый сигнал (текст или изображение)
+            is_text_signal = message_text and self._looks_like_signal(message_text)
+            is_image_signal = has_image
+            
+            if not is_text_signal and not is_image_signal:
                 logger.debug("Message doesn't look like a trading signal")
                 return
             
@@ -266,8 +278,8 @@ class TelegramListener:
             
             logger.info(f"Signal detected from {channel_config.channel_name}")
             
-            # Отправляем на парсинг
-            await self._process_signal(message_text, channel_config, event)
+            # Отправляем на парсинг (текст и/или изображение)
+            await self._process_signal(message_text, channel_config, event, has_image)
             
         except Exception as e:
             logger.error(f"Error handling message: {e}")
@@ -305,8 +317,8 @@ class TelegramListener:
         
         return keyword_count >= 2
     
-    async def _process_signal(self, text: str, config: ChannelConfig, event):
-        """Обработка сигнала через роутер"""
+    async def _process_signal(self, text: str, config: ChannelConfig, event, has_image: bool = False):
+        """Обработка сигнала через роутер (текст и/или изображение)"""
         try:
             # Дополнительная информация об источнике
             source_info = {
@@ -314,29 +326,98 @@ class TelegramListener:
                 'channel_name': config.channel_name,
                 'message_id': event.message.id,
                 'message_date': event.message.date,
-                'chat_type': 'channel'
+                'chat_type': 'channel',
+                'has_image': has_image
             }
             
-            # Отправляем в роутер сигналов
-            result = await route_signal(text, config.trader_id, source_info)
+            result = None
+            
+            # Если есть изображение, анализируем его
+            if has_image:
+                logger.info(f"🖼️ Processing image signal from {config.channel_name}")
+                image_result = await self._process_image_signal(event, text, config)
+                if image_result:
+                    result = image_result
+                    logger.info(f"✅ Image signal parsed: {result.get('symbol')} {result.get('side')}")
+            
+            # Если нет результата от изображения, пробуем текст
+            if not result and text:
+                result = await route_signal(text, config.trader_id, source_info)
             
             if result:
                 self.stats['signals_parsed'] += 1
-                logger.info(f"Signal successfully parsed: {result['symbol']} {result['direction']}")
+                logger.info(f"Signal successfully parsed: {result.get('symbol')} {result.get('side', result.get('direction'))}")
                 
                 # Сохраняем сырой сигнал для истории
-                await self._save_raw_signal(text, config, event, result)
+                await self._save_raw_signal(text, config, event, result, has_image)
                 
             else:
                 logger.warning(f"Failed to parse signal from {config.channel_name}")
                 
                 # Сохраняем неудачный сигнал
-                await self._save_raw_signal(text, config, event, None)
+                await self._save_raw_signal(text, config, event, None, has_image)
                 
         except Exception as e:
             logger.error(f"Error processing signal: {e}")
     
-    async def _save_raw_signal(self, text: str, config: ChannelConfig, event, parsed_result: Optional[Dict]):
+    async def _process_image_signal(self, event, caption: str, config: ChannelConfig) -> Optional[Dict[str, Any]]:
+        """Обработка сигнала из изображения"""
+        try:
+            # Получаем изображение
+            image_data = await self._download_image_from_event(event)
+            if not image_data:
+                return None
+            
+            # Анализируем изображение с помощью AI
+            result = await self.image_parser.parse_image_signal(
+                image_data=image_data,
+                telegram_caption=caption
+            )
+            
+            if result and result.get('is_signal'):
+                # Преобразуем результат в формат системы
+                return {
+                    'symbol': result.get('symbol'),
+                    'side': result.get('side'),
+                    'entry': result.get('entry'),
+                    'targets': result.get('targets'),
+                    'stop_loss': result.get('stop_loss'),
+                    'leverage': result.get('leverage'),
+                    'reason': result.get('reason'),
+                    'confidence': result.get('confidence', 0.8),
+                    'source': 'image_analysis',
+                    'ai_model': result.get('ai_model'),
+                    'chart_pattern': result.get('chart_pattern'),
+                    'timeframe': result.get('timeframe'),
+                    'trader_id': config.trader_id
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing image signal: {e}")
+            return None
+    
+    async def _download_image_from_event(self, event) -> Optional[bytes]:
+        """Скачивание изображения из Telegram события"""
+        try:
+            if event.message.photo:
+                # Скачиваем фото
+                image_data = await event.message.download_media(file=bytes)
+                return image_data
+            elif event.message.document:
+                # Проверяем, что это изображение
+                if event.message.document.mime_type and event.message.document.mime_type.startswith('image/'):
+                    image_data = await event.message.download_media(file=bytes)
+                    return image_data
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error downloading image: {e}")
+            return None
+    
+    async def _save_raw_signal(self, text: str, config: ChannelConfig, event, parsed_result: Optional[Dict], has_image: bool = False):
         """Сохранение сырого сигнала в БД"""
         try:
             raw_signal_data = {
@@ -349,7 +430,11 @@ class TelegramListener:
                     'channel_name': config.channel_name,
                     'parsed': parsed_result is not None,
                     'parsed_symbol': parsed_result.get('symbol') if parsed_result else None,
-                    'parsed_direction': parsed_result.get('direction') if parsed_result else None
+                    'parsed_direction': parsed_result.get('side', parsed_result.get('direction')) if parsed_result else None,
+                    'has_image': has_image,
+                    'source_type': parsed_result.get('source') if parsed_result else 'text_only',
+                    'ai_model': parsed_result.get('ai_model') if parsed_result else None,
+                    'confidence': parsed_result.get('confidence') if parsed_result else None
                 }
             }
             

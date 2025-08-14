@@ -57,13 +57,10 @@ class LiveCandleCollector:
         try:
             normalized_symbol = symbol.upper()
             
-            # Подписываемся на Bybit
+            # Подписываемся только на Bybit (Binance заблокирован HTTP 451)
             await self._subscribe_bybit(normalized_symbol, timeframes)
             
-            # Подписываемся на Binance как резерв
-            await self._subscribe_binance(normalized_symbol, timeframes)
-            
-            logger.info(f"✅ Subscribed to {normalized_symbol} on timeframes: {timeframes}")
+            logger.info(f"✅ Subscribed to {normalized_symbol} on Bybit, timeframes: {timeframes}")
             
         except Exception as e:
             logger.error(f"❌ Error subscribing to {symbol}: {e}")

@@ -72,22 +72,34 @@ class AIFallbackParser:
     def _get_openai_prompt(self) -> str:
         """Промпт для OpenAI GPT"""
         return """
-You are a professional crypto trading signal parser. Analyze the given text and extract trading signal data.
+You are a professional crypto trading signal parser with expertise in analyzing Telegram trading signals. Analyze the given text and extract trading signal data with high accuracy.
 
 RULES:
 1. If the text is NOT a trading signal, return: {"is_signal": false}
-2. If it IS a trading signal, extract all available data
+2. If it IS a trading signal, extract ALL available data with maximum precision
 3. Always return valid JSON only, no explanations
 4. Use null for missing data
+5. Be very careful with number parsing - extract exact prices
+6. Look for hidden patterns and implicit information
 
 REQUIRED FIELDS:
-- symbol: trading pair (normalize to format like "BTCUSDT")
-- side: "LONG" or "SHORT" 
-- entry: price or [min_price, max_price] for range
-- targets: array of target prices [tp1, tp2, tp3, ...]
-- stop_loss: stop loss price
-- leverage: leverage value if mentioned
+- symbol: trading pair (normalize to format like "BTCUSDT", handle variations like #BTC, BTC/USDT, etc.)
+- side: "LONG" or "SHORT" (also detect "BUY", "SELL", "Longing", "Shorting")
+- entry: exact price or [min_price, max_price] for range entries
+- targets: array of ALL target prices [tp1, tp2, tp3, ...] - extract as many as found
+- stop_loss: stop loss price (also look for "SL", "Stoploss", "СТОП")
+- leverage: leverage value if mentioned (format as "10x")
 - reason: trading reason/analysis if provided
+- confidence: your confidence in parsing accuracy (0.0-1.0)
+- risk_reward: calculate if possible from entry/targets/stop
+- timeframe: trading timeframe if mentioned (scalp, day, swing, etc.)
+
+SPECIAL PATTERNS TO DETECT:
+- Russian text: "ВХОД", "ЦЕЛИ", "СТОП", "ЛОНГ", "ШОРТ"
+- Emojis: 🔥, 💎, 📍, 🚀, 💰
+- Multiple entry zones: "Entry 1:", "Entry 2:", etc.
+- Percentage targets: "TP1: +5%", "TP2: +10%"
+- Market orders: "Market", "Limit", "Stop"
 
 EXAMPLE OUTPUT:
 {
@@ -95,11 +107,13 @@ EXAMPLE OUTPUT:
     "symbol": "BTCUSDT",
     "side": "LONG", 
     "entry": [45000, 46000],
-    "targets": [47000, 48000, 49000],
+    "targets": [47000, 48000, 49000, 50000],
     "stop_loss": 44000,
     "leverage": "10x",
-    "reason": "bullish breakout pattern",
-    "confidence": 0.9
+    "reason": "bullish breakout with volume confirmation",
+    "confidence": 0.95,
+    "risk_reward": 2.5,
+    "timeframe": "swing"
 }
 
 TEXT TO ANALYZE:
