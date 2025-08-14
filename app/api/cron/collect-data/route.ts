@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           }
 
           // Сохраняем в Supabase
-          const result = await supabase.table('market_snapshots').insert([marketSnapshot])
+          const result = await supabase.from('market_snapshots').insert([marketSnapshot])
           
           if (result.error) {
             results.errors.push(`Market data error for ${symbol}: ${result.error.message}`)
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       
       // Получаем последние рыночные данные для анализа
       const recentMarketData = await supabase
-        .table('market_snapshots')
+        .from('market_snapshots')
         .select('*')
         .gte('snapshot_timestamp', new Date(Date.now() - 5 * 60 * 1000).toISOString())
         .order('snapshot_timestamp', { ascending: false })
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
       newsItems.push(...marketNews)
 
       if (newsItems.length > 0) {
-        const newsResult = await supabase.table('critical_news').insert(newsItems)
+        const newsResult = await supabase.from('critical_news').insert(newsItems)
         
         if (newsResult.error) {
           results.errors.push(`News creation error: ${newsResult.error.message}`)
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
 
       // Проверяем на экстремальные движения цен
       const extremeMovements = await supabase
-        .table('market_snapshots')
+        .from('market_snapshots')
         .select('*')
         .gte('snapshot_timestamp', new Date(Date.now() - 2 * 60 * 1000).toISOString())
         .or('price_change_24h.gt.10,price_change_24h.lt.-10')
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (alertsToCreate.length > 0) {
-        const alertResult = await supabase.table('alerts').insert(alertsToCreate)
+        const alertResult = await supabase.from('alerts').insert(alertsToCreate)
         
         if (alertResult.error) {
           results.errors.push(`Alert creation error: ${alertResult.error.message}`)

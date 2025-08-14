@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
 
     // Создание нового сигнала
     const signalData = {
-      source_id: sourceResult.data.id,
+      source_id: sourceResult.data[0]?.id,
       signal_type: body.signal_type.toUpperCase(),
       symbol: body.symbol.toUpperCase(),
       direction: body.direction.toUpperCase(),
