@@ -37,10 +37,19 @@ class LiveSystemOrchestrator:
     """Оркестратор для запуска всей live системы"""
     
     def __init__(self):
-        # Инициализируем Supabase клиент
+        # Инициализируем Supabase клиент с обработкой ошибок
         supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        self.supabase = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
+        
+        self.supabase = None
+        if supabase_url and supabase_key:
+            try:
+                self.supabase = create_client(supabase_url, supabase_key)
+                print("✅ Supabase клиент успешно инициализирован")
+            except Exception as e:
+                print(f"⚠️ Ошибка инициализации Supabase: {e}")
+                print("🔄 Система будет работать без Supabase интеграции")
+                self.supabase = None
         
         # Основные компоненты
         self.live_processor = get_live_processor()
@@ -49,8 +58,8 @@ class LiveSystemOrchestrator:
         self.channel_manager = ChannelManager()
         
         # НОВЫЕ КОМПОНЕНТЫ для честной статистики как у Дарена
-        self.candle_collector = get_candle_collector(self.supabase)
-        self.signal_analyzer = get_signal_analyzer(self.supabase)
+        self.candle_collector = get_candle_collector(self.supabase) if self.supabase else None
+        self.signal_analyzer = get_signal_analyzer(self.supabase) if self.supabase else None
         
         # Статистика системы
         self.system_stats = {
@@ -382,7 +391,14 @@ class LiveSystemOrchestrator:
                     "recent_traders": len(self.live_processor.recent_signals)
                 }
                 
-                self.live_processor.supabase.table("system_stats").insert(final_stats).execute()
+                if self.supabase:
+                    try:
+                        self.supabase.table("system_stats").insert(final_stats).execute()
+                        print("✅ Статистика сохранена в Supabase")
+                    except Exception as e:
+                        print(f"⚠️ Ошибка сохранения статистики: {e}")
+                else:
+                    print("ℹ️ Supabase недоступен, статистика не сохранена")
             
             logger.info("✅ System stopped gracefully")
             

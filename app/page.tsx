@@ -192,76 +192,64 @@ export default function UnifiedDashboard() {
 
   const renderQuickStats = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">💰</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">Total P&L</p>
-            <p className="text-white font-bold text-lg">${quickStats.totalPnL.toLocaleString()}</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">💰</span>
           </div>
         </div>
+        <div className="cursor-stat-value text-green-400">${quickStats.totalPnL.toLocaleString()}</div>
+        <div className="cursor-stat-label">Total P&L</div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">📊</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">Today P&L</p>
-            <p className="text-white font-bold text-lg">${quickStats.todayPnL.toLocaleString()}</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">📊</span>
           </div>
         </div>
+        <div className="cursor-stat-value text-blue-400">${quickStats.todayPnL.toLocaleString()}</div>
+        <div className="cursor-stat-label">Today P&L</div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-violet-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">⚡</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">Active Trades</p>
-            <p className="text-white font-bold text-lg">{quickStats.activeTrades}</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">⚡</span>
           </div>
         </div>
+        <div className="cursor-stat-value">{quickStats.activeTrades}</div>
+        <div className="cursor-stat-label">Active Trades</div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">🏥</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">System Health</p>
-            <p className="text-white font-bold text-lg">{quickStats.systemHealth}%</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">🏥</span>
           </div>
         </div>
+        <div className="cursor-stat-value text-green-400">{quickStats.systemHealth}%</div>
+        <div className="cursor-stat-label">System Health</div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">📡</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">Active Signals</p>
-            <p className="text-white font-bold text-lg">{quickStats.activeSignals}</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">📡</span>
           </div>
         </div>
+        <div className="cursor-stat-value text-purple-400">{quickStats.activeSignals}</div>
+        <div className="cursor-stat-label">Active Signals</div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">🎯</span>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm">Win Rate</p>
-            <p className="text-white font-bold text-lg">{quickStats.winRate}%</p>
+      <div className="cursor-stat-card">
+        <div className="flex items-center justify-center mb-3">
+          <div className="w-12 h-12 cursor-gradient rounded-xl flex items-center justify-center">
+            <span className="text-white text-xl">🎯</span>
           </div>
         </div>
+        <div className="cursor-stat-value text-green-400">{quickStats.winRate}%</div>
+        <div className="cursor-stat-label">Win Rate</div>
       </div>
     </div>
   )
@@ -383,20 +371,20 @@ export default function UnifiedDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-[#0f0f23]">
       {/* Header */}
-      <header className="glass border-b border-white/10 sticky top-0 z-50">
+      <header className="cursor-card border-b border-white/10 sticky top-0 z-50 rounded-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-[#667eea] to-[#764ba2] rounded-xl flex items-center justify-center neon-glow">
+            <div className="flex items-center space-x-4">
+              <div className="w-10 h-10 cursor-gradient rounded-xl flex items-center justify-center cursor-glow">
                 <span className="text-white font-bold text-lg">G</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold gradient-text">GHOST Trading System</h1>
+                <h1 className="text-2xl font-bold cursor-gradient-text">GHOST Trading System</h1>
                 {!isMobile && (
                   <p className="text-gray-400 text-sm">Professional Trading Dashboard</p>
                 )}
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-green-400 text-sm font-medium">LIVE</span>
               </div>
@@ -407,7 +395,7 @@ export default function UnifiedDashboard() {
                 <span>Real-time updates</span>
               </div>
               {user && (
-                <div className="text-sm text-gray-300">
+                <div className="cursor-btn text-sm">
                   {user.email}
                 </div>
               )}
@@ -423,17 +411,14 @@ export default function UnifiedDashboard() {
 
         {/* Section Navigation */}
         <div className="mb-8">
-          <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-6'} gap-2 mb-6`}>
+          <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-6'} gap-3 mb-6`}>
             {sections.map((section) => (
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
                 className={`
-                  relative p-4 rounded-xl transition-all duration-300 
-                  ${activeSection === section.id 
-                    ? `bg-gradient-to-r ${section.color} text-white shadow-lg shadow-blue-500/20` 
-                    : 'glass text-gray-400 hover:text-white hover:bg-white/5'
-                  }
+                  cursor-nav-item relative p-4 rounded-xl transition-all duration-200
+                  ${activeSection === section.id ? 'active' : ''}
                 `}
               >
                 <div className="flex flex-col items-center space-y-2">
@@ -444,8 +429,8 @@ export default function UnifiedDashboard() {
                 </div>
                 
                 {activeSection === section.id && (
-                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
-                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
+                    <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                   </div>
                 )}
               </button>
@@ -460,17 +445,29 @@ export default function UnifiedDashboard() {
       </main>
       
       {/* Footer */}
-      <footer className="glass border-t border-white/10 mt-12">
+      <footer className="cursor-card border-t border-white/10 mt-12 rounded-none">
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
             <div className="text-sm text-gray-400">
               © 2025 GHOST Trading System - Professional Crypto Trading Platform
             </div>
-            <div className="flex space-x-4 text-sm text-gray-400">
-              <span>📊 Live Data</span>
-              <span>📰 News Feed</span>
-              <span>📡 Real-time Signals</span>
-              <span>🤖 AI Analysis</span>
+            <div className="flex space-x-6 text-sm text-gray-400">
+              <div className="flex items-center space-x-1">
+                <span>📊</span>
+                <span>Live Data</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span>📰</span>
+                <span>News Feed</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span>📡</span>
+                <span>Real-time Signals</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span>🤖</span>
+                <span>AI Analysis</span>
+              </div>
             </div>
           </div>
         </div>
