@@ -697,10 +697,13 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
     
     def _extract_direction_comprehensive(self, text: str) -> Optional[str]:
         """Определение направления торговли"""
-        # Явные указания
-        if any(word in text for word in ['LONG', 'LONGING', 'BUY', 'BUYING']):
+        # Явные указания (английский + русский)
+        long_keywords = ['LONG', 'LONGING', 'BUY', 'BUYING', 'ПОКУПАЕМ', 'ПОКУПАТЬ', 'ЛОНГ', 'ПОКУПКА']
+        short_keywords = ['SHORT', 'SHORTING', 'SELL', 'SELLING', 'ПРОДАЕМ', 'ПРОДАТЬ', 'ШОРТ', 'ПРОДАЖА']
+        
+        if any(word in text for word in long_keywords):
             return "LONG"
-        if any(word in text for word in ['SHORT', 'SHORTING', 'SELL', 'SELLING']):
+        if any(word in text for word in short_keywords):
             return "SHORT"
         
         # Анализ контекста
@@ -748,12 +751,15 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
         """Извлечение зон входа"""
         import re
         
-        # Поиск явных указаний entry
+        # Поиск явных указаний entry (английский + русский)
         entry_patterns = [
             r'ENTRY[:\s]+(\d+\.?\d*)\s*[-/]\s*(\d+\.?\d*)',  # ENTRY: 45000-46000
             r'ENTRY[:\s]+(\d+\.?\d*)',                       # ENTRY: 45000
             r'BUY[:\s]+(\d+\.?\d*)\s*[-/]\s*(\d+\.?\d*)',   # BUY: 45000-46000
             r'BUY[:\s]+(\d+\.?\d*)',                         # BUY: 45000
+            r'ВХОД[:\s]+(\d+\.?\d*)\s*[-/]\s*(\d+\.?\d*)',  # ВХОД: 45000-46000
+            r'ВХОД[:\s]+(\d+\.?\d*)',                        # ВХОД: 45000
+            r'ENTRY ZONE[:\s]+\$?(\d+\.?\d*)\s*[-/]\s*\$?(\d+\.?\d*)',  # Entry Zone: $95.50 - $96.20
         ]
         
         for pattern in entry_patterns:
@@ -778,11 +784,15 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
         
         targets = []
         
-        # Поиск TP уровней
+        # Поиск TP уровней (английский + русский)
         tp_patterns = [
-            r'TP\s*(\d+)[:\s]+(\d+\.?\d*)',  # TP1: 47000
-            r'TARGET[:\s]+(\d+\.?\d*)',       # TARGET: 47000
-            r'PROFIT[:\s]+(\d+\.?\d*)',       # PROFIT: 47000
+            r'TP\s*(\d+)[:\s]+\$?(\d+\.?\d*)',  # TP1: 47000, TP1: $47000
+            r'TARGET[:\s]+\$?(\d+\.?\d*)',       # TARGET: 47000
+            r'TARGETS[:\s]+\$?(\d+\.?\d*)',      # TARGETS: 46000, 47000, 48000
+            r'PROFIT[:\s]+\$?(\d+\.?\d*)',       # PROFIT: 47000
+            r'ЦЕЛИ[:\s]+(\d+\.?\d*)',            # ЦЕЛИ: 46000, 47000
+            r'ЦЕЛЬ[:\s]+(\d+\.?\d*)',            # ЦЕЛЬ: 46000
+            r'🎯\s*TP\s*(\d+)[:\s]+\$?(\d+\.?\d*)',  # 🎯 TP1: $98.00
         ]
         
         for pattern in tp_patterns:

@@ -26,22 +26,36 @@ export default function RealtimeChart() {
   const [candleData, setCandleData] = useState<CandleData[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [useMockData, setUseMockData] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const mockDataInterval = useRef<NodeJS.Timeout | null>(null)
 
   const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT']
 
-  // WebSocket подключение
+  // WebSocket подключение или моковые данные
   useEffect(() => {
-    connectWebSocket()
+    // Сначала пробуем WebSocket, при ошибке переключаемся на моковые данные
+    if (!useMockData) {
+      connectWebSocket()
+    } else {
+      startMockData()
+    }
+    
     return () => {
       if (wsRef.current) {
         wsRef.current.close()
       }
+      if (mockDataInterval.current) {
+        clearInterval(mockDataInterval.current)
+      }
     }
-  }, [selectedSymbol])
+  }, [selectedSymbol, useMockData])
 
   const connectWebSocket = () => {
+    // Сначала загружаем исторические данные через наш API
+    loadHistoricalData()
+    
     try {
       // Используем Binance WebSocket для реальных данных
       const wsUrl = `wss://stream.binance.com:9443/ws/${selectedSymbol.toLowerCase()}@ticker`
@@ -101,14 +115,201 @@ export default function RealtimeChart() {
       }
 
       wsRef.current.onerror = (error: Event) => {
-        setError('WebSocket connection failed')
+        setError('WebSocket connection failed - using API polling')
         setIsConnected(false)
-        console.error('WebSocket error:', error.type || 'Connection failed')
+        console.error('WebSocket error:', 'Connection failed')
+        
+        // Вместо моковых данных, используем API polling
+        startApiPolling()
       }
 
     } catch (err) {
-      setError('Failed to establish WebSocket connection')
+      setError('Failed to establish WebSocket connection - using API polling')
       console.error('WebSocket setup error:', err)
+      startApiPolling()
+    }
+  }
+
+  const startApiPolling = () => {
+    console.log('🔄 Starting GHOST API polling mode...')
+    setError('Using GHOST Live API (polling mode)')
+    setIsConnected(true)
+    
+    // Загружаем данные каждые 10 секунд через наши существующие API
+    const pollData = async () => {
+      try {
+        console.log(`📡 Polling live data for ${selectedSymbol}...`)
+        
+        // Используем наш API /api/prices/live 
+        const response = await fetch(`/api/prices/live?symbol=${selectedSymbol}`)
+        const priceResponse = await response.json()
+        
+        if (priceResponse.price) {
+          console.log(`💰 Live price update: ${selectedSymbol} = $${priceResponse.price}`)
+          
+          const newPriceData: PriceData = {
+            symbol: selectedSymbol,
+            price: parseFloat(priceResponse.price),
+            change24h: parseFloat(priceResponse.change24h) || 0,
+            volume: parseFloat(priceResponse.volume) || 1000000,
+            timestamp: Date.now()
+          }
+          
+          setPriceData(newPriceData)
+          
+          // Периодически обновляем исторические данные
+          if (Math.random() < 0.2) { // 20% шанс обновить график
+            console.log('🔄 Refreshing chart data...')
+            loadHistoricalData()
+          }
+        }
+      } catch (error) {
+        console.error('❌ GHOST API polling error:', error)
+        setError('API polling failed - retrying...')
+      }
+    }
+    
+    // Первый вызов сразу
+    pollData()
+    
+    // Затем каждые 10 секунд (чтобы не перегружать API)
+    mockDataInterval.current = setInterval(pollData, 10000)
+  }
+
+  const startMockData = () => {
+    // Начальные данные
+    const basePrice = selectedSymbol === 'BTCUSDT' ? 43200 : 
+                     selectedSymbol === 'ETHUSDT' ? 2650 :
+                     selectedSymbol === 'BNBUSDT' ? 320 :
+                     selectedSymbol === 'ADAUSDT' ? 0.39 :
+                     145 // SOLUSDT
+
+    let currentPrice = basePrice
+    let currentVolume = 1000000
+    
+    // Устанавливаем начальные данные
+    const initialPriceData: PriceData = {
+      symbol: selectedSymbol,
+      price: currentPrice,
+      change24h: Math.random() * 10 - 5, // -5% до +5%
+      volume: currentVolume,
+      timestamp: Date.now()
+    }
+    
+    setPriceData(initialPriceData)
+    setIsConnected(true)
+    setError('Demo mode - simulated data')
+
+    // Генерируем исторические свечи
+    const historicalCandles: CandleData[] = []
+    let histPrice = basePrice * 0.98 // Начинаем чуть ниже
+    
+    for (let i = 0; i < 50; i++) {
+      const open = histPrice
+      const volatility = basePrice * 0.002 // 0.2% волатильность
+      const high = open + Math.random() * volatility
+      const low = open - Math.random() * volatility
+      const close = low + Math.random() * (high - low)
+      
+      historicalCandles.push({
+        timestamp: Date.now() - (50 - i) * 60000, // 1 минута между свечами
+        open,
+        high,
+        low,
+        close,
+        volume: 800000 + Math.random() * 400000
+      })
+      
+      histPrice = close
+    }
+    
+    setCandleData(historicalCandles)
+
+    // Обновляем данные каждые 2 секунды
+    mockDataInterval.current = setInterval(() => {
+      const change = (Math.random() - 0.5) * basePrice * 0.001 // ±0.1% изменение
+      currentPrice += change
+      currentVolume = 800000 + Math.random() * 400000
+
+      const newPriceData: PriceData = {
+        symbol: selectedSymbol,
+        price: currentPrice,
+        change24h: ((currentPrice - basePrice) / basePrice) * 100,
+        volume: currentVolume,
+        timestamp: Date.now()
+      }
+
+      setPriceData(newPriceData)
+
+      // Добавляем новую свечу каждые 10 обновлений (примерно каждые 20 секунд)
+      if (Math.random() < 0.1) {
+        const lastCandle = historicalCandles[historicalCandles.length - 1]
+        const open = lastCandle ? lastCandle.close : currentPrice
+        const volatility = basePrice * 0.002
+        const high = Math.max(open, currentPrice) + Math.random() * volatility * 0.5
+        const low = Math.min(open, currentPrice) - Math.random() * volatility * 0.5
+        
+        const newCandle: CandleData = {
+          timestamp: Date.now(),
+          open,
+          high,
+          low,
+          close: currentPrice,
+          volume: currentVolume
+        }
+
+        setCandleData(prev => {
+          const updated = [...prev, newCandle]
+          return updated.slice(-100) // Оставляем последние 100 свечей
+        })
+      }
+    }, 2000)
+  }
+
+  const loadHistoricalData = async () => {
+    try {
+      console.log(`🔄 Loading real data for ${selectedSymbol} via GHOST Market Data API...`)
+      
+      // Используем наш существующий API market-data
+      const response = await fetch(`/api/market-data?symbol=${selectedSymbol}&timeframe=1H&limit=50`)
+      const data = await response.json()
+      
+      console.log('📊 Market data received:', data)
+      
+      if (data.price_data && data.price_data.length > 0) {
+        // Конвертируем данные в формат CandleData
+        const candles: CandleData[] = data.price_data.map((point: any) => ({
+          timestamp: new Date(point.timestamp).getTime(),
+          open: point.open,
+          high: point.high,
+          low: point.low,
+          close: point.close,
+          volume: point.volume
+        }))
+        
+        setCandleData(candles)
+        console.log(`✅ Loaded ${candles.length} candles for ${selectedSymbol}`)
+        
+        // Устанавливаем текущую цену
+        if (data.current_price) {
+          const currentPriceData: PriceData = {
+            symbol: selectedSymbol,
+            price: data.current_price,
+            change24h: data.price_change_24h || 0,
+            volume: data.volume_24h || 0,
+            timestamp: Date.now()
+          }
+          setPriceData(currentPriceData)
+          console.log(`💰 Current price for ${selectedSymbol}: $${data.current_price}`)
+        }
+      } else {
+        console.warn('⚠️ No price data received from API')
+      }
+    } catch (error) {
+      console.error('❌ Error loading historical data:', error)
+      setError('Failed to load data from GHOST API - trying fallback...')
+      // При ошибке загрузки исторических данных, используем API polling
+      startApiPolling()
     }
   }
 

@@ -168,7 +168,7 @@ class TelegramListener:
             
             # Создаем отдельный клиент для получения сообщений
             import asyncio
-                        import re
+            import re
             from datetime import datetime, timedelta
             
             try:
@@ -212,8 +212,8 @@ class TelegramListener:
                                                     code = match.group(1)
                                                     logger.info(f"✅ Получен код из сообщения: {code}")
                                                     await session_client.disconnect()
-                            await temp_client.disconnect()
-                            return code
+                                                    await temp_client.disconnect()
+                                                    return code
                                     
                                     await asyncio.sleep(2)
                                     
