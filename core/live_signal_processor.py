@@ -98,14 +98,43 @@ class LiveSignalProcessor:
                 logger.warning("No active Telegram sources found")
                 return
             
-            # Создаем Telegram listener
-            self.telegram_listener = TelegramListener()
+            # Создаем Telegram listener с API ключами
+            api_id = os.getenv('TELEGRAM_API_ID')
+            api_hash = os.getenv('TELEGRAM_API_HASH')
+            phone = os.getenv('TELEGRAM_PHONE')
             
-            # Регистрируем обработчик сообщений
+            if not api_id or not api_hash:
+                logger.error("❌ TELEGRAM_API_ID and TELEGRAM_API_HASH required in environment")
+                return
+            
+            self.telegram_listener = TelegramListener(api_id, api_hash, phone)
+            
+            # Инициализируем Telegram клиент
+            if not await self.telegram_listener.initialize():
+                logger.error("❌ Failed to initialize Telegram client")
+                return
+            
+            # Добавляем каналы из конфигурации
+            for source in telegram_sources:
+                from core.telegram_listener import ChannelConfig
+                
+                channel_config = ChannelConfig(
+                    channel_id=source.connection_params.get('channel_id'),
+                    channel_name=source.name,
+                    trader_id=source.source_id,
+                    is_active=True,
+                    keywords_filter=source.filters.get('keywords_include', []),
+                    exclude_keywords=source.filters.get('keywords_exclude', [])
+                )
+                
+                self.telegram_listener.add_channel(channel_config)
+                logger.info(f"📡 Added Telegram channel: {source.name}")
+            
+            # Устанавливаем обработчик сообщений
             self.telegram_listener.set_message_handler(self._handle_telegram_message)
             
-            # Запускаем в фоне
-            asyncio.create_task(self.telegram_listener.start())
+            # Запускаем прослушивание в фоне
+            asyncio.create_task(self.telegram_listener.start_listening())
             
             logger.info(f"📱 Telegram processing started for {len(telegram_sources)} sources")
             
@@ -212,15 +241,17 @@ class LiveSignalProcessor:
             return False
         
         # Проверяем ключевые слова источника
-        if source_config.keywords_filter:
+        keywords_include = source_config.filters.get('keywords_include', [])
+        if keywords_include:
             text_lower = text.lower()
-            if not any(keyword in text_lower for keyword in source_config.keywords_filter):
+            if not any(keyword in text_lower for keyword in keywords_include):
                 return False
         
         # Проверяем исключающие слова
-        if source_config.exclude_keywords:
+        keywords_exclude = source_config.filters.get('keywords_exclude', [])
+        if keywords_exclude:
             text_lower = text.lower()
-            if any(keyword in text_lower for keyword in source_config.exclude_keywords):
+            if any(keyword in text_lower for keyword in keywords_exclude):
                 return False
         
         # Базовые паттерны сигналов

@@ -78,41 +78,221 @@ class TelegramListener:
         # Парсер изображений
         self.image_parser = get_image_parser()
         
+        # Внешний обработчик сообщений
+        self.external_message_handler = None
+        
         logger.info("Telegram Listener initialized")
     
     async def _get_code_from_telegram(self):
         """Автоматическое получение кода из Telegram сообщений"""
         try:
-            # Создаем временный клиент для получения кода
-            temp_client = TelegramClient(':memory:', self.api_id, self.api_hash)
-            await temp_client.connect()
+            logger.info("📱 Ожидаем код авторизации...")
             
-            if not await temp_client.is_user_authorized():
-                logger.info("📱 Отправляем запрос кода на телефон...")
-                await temp_client.send_code_request(self.phone)
-                
-                # Ждем код в сообщениях от Telegram
-                logger.info("⏳ Ожидаем код в сообщениях от Telegram (777000)...")
-                
-                async for message in temp_client.iter_messages('777000', limit=5):
-                    if message.message and 'code' in message.message.lower():
-                        # Извлекаем код из сообщения (обычно 5-6 цифр)
-                        import re
-                        code_match = re.search(r'\\b(\\d{5,6})\\b', message.message)
-                        if code_match:
-                            code = code_match.group(1)
-                            logger.info(f"✅ Получен код автоматически: {code}")
-                            await temp_client.disconnect()
-                            return code
-                
-                logger.error("❌ Код не найден в сообщениях")
+            # Проверяем переменную окружения с кодом
+            telegram_code = os.getenv('TELEGRAM_CODE')
+            if telegram_code:
+                logger.info(f"✅ Используем код из переменной окружения: {telegram_code}")
+                return telegram_code
             
-            await temp_client.disconnect()
-            return input("📱 Введите код из SMS: ")  # Fallback на ручной ввод
+            # Попытка автоматического получения кода из Telegram
+            try:
+                logger.info("⏳ Ожидаем код в сообщениях от Telegram...")
+                
+                # Используем основной клиент для получения сообщений
+                import asyncio
+                import re
+                from datetime import datetime, timedelta
+                
+                # Ждем код в течение 60 секунд
+                start_time = datetime.now()
+                timeout = timedelta(seconds=60)
+                
+                while datetime.now() - start_time < timeout:
+                    try:
+                        # Получаем последние сообщения от Telegram (777000)
+                        async for message in self.client.iter_messages(777000, limit=5):
+                            if message.message and message.date > start_time - timedelta(minutes=2):
+                                text = message.message
+                                
+                                # Ищем код в сообщении
+                                code_patterns = [
+                                    r'Login code: (\d{5,6})',
+                                    r'Telegram code: (\d{5,6})',
+                                    r'code: (\d{5,6})',
+                                    r'код: (\d{5,6})',
+                                    r'Код: (\d{5,6})',
+                                    r'\b(\d{5,6})\b'  # Любые 5-6 цифр
+                                ]
+                                
+                                for pattern in code_patterns:
+                                    match = re.search(pattern, text)
+                                    if match:
+                                        code = match.group(1)
+                                        logger.info(f"✅ Получен код из сообщения: {code}")
+                                        logger.debug(f"Текст сообщения: {text}")
+                                        return code
+                        
+                        # Ждем 2 секунды перед следующей попыткой
+                        await asyncio.sleep(2)
+                        
+                    except Exception as msg_error:
+                        logger.debug(f"Ошибка получения сообщения: {msg_error}")
+                        await asyncio.sleep(1)
+                
+                logger.warning("⏰ Время ожидания кода истекло (60 сек)")
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка автоматического получения кода: {e}")
+            
+            # Fallback - возвращаем пустую строку для автоматического режима
+            logger.error("❌ Не удалось получить код автоматически")
+            logger.info("💡 Установите TELEGRAM_CODE в переменные окружения")
+            
+            # В серверном режиме не можем запрашивать ввод
+            return ""
             
         except Exception as e:
-            logger.error(f"❌ Ошибка получения кода: {e}")
-            return input("📱 Введите код из SMS: ")  # Fallback
+            logger.error(f"❌ Критическая ошибка получения кода: {e}")
+            return ""
+    
+    async def _get_code_from_telegram_after_request(self):
+        """Получение кода из Telegram после отправки запроса"""
+        try:
+            # Проверяем переменную окружения с кодом
+            telegram_code = os.getenv('TELEGRAM_CODE')
+            if telegram_code:
+                logger.info(f"✅ Используем код из переменной окружения: {telegram_code}")
+                return telegram_code
+            
+            logger.info("⏳ Ожидаем код в сообщениях от Telegram...")
+            
+            # Создаем отдельный клиент для получения сообщений
+            import asyncio
+            import re
+            from datetime import datetime, timedelta
+            
+            try:
+                # Создаем временный клиент для чтения сообщений
+                temp_client = TelegramClient(':memory:', int(self.api_id), self.api_hash)
+                await temp_client.connect()
+                
+                # Пытаемся авторизоваться с существующей сессией
+                if os.path.exists('ghost_session.session'):
+                    try:
+                        session_client = TelegramClient('ghost_session', int(self.api_id), self.api_hash)
+                        await session_client.connect()
+                        
+                        if await session_client.is_user_authorized():
+                            logger.info("📱 Используем существующую сессию для получения кода")
+                            
+                            # Ждем код в течение 60 секунд
+                            start_time = datetime.now()
+                            timeout = timedelta(seconds=60)
+                            
+                            while datetime.now() - start_time < timeout:
+                                try:
+                                    # Получаем последние сообщения от Telegram (777000)
+                                    async for message in session_client.iter_messages(777000, limit=5):
+                                        if message.message and message.date > start_time - timedelta(minutes=2):
+                                            text = message.message
+                                            
+                                            # Ищем код в сообщении
+                                            code_patterns = [
+                                                r'Login code: (\d{5,6})',
+                                                r'Telegram code: (\d{5,6})',
+                                                r'code: (\d{5,6})',
+                                                r'код: (\d{5,6})',
+                                                r'Код: (\d{5,6})',
+                                                r'\b(\d{5,6})\b'  # Любые 5-6 цифр
+                                            ]
+                                            
+                                            for pattern in code_patterns:
+                                                match = re.search(pattern, text)
+                                                if match:
+                                                    code = match.group(1)
+                                                    logger.info(f"✅ Получен код из сообщения: {code}")
+                                                    await session_client.disconnect()
+                                                    await temp_client.disconnect()
+                                                    return code
+                                    
+                                    await asyncio.sleep(2)
+                                    
+                                except Exception as msg_error:
+                                    logger.debug(f"Ошибка получения сообщения: {msg_error}")
+                                    await asyncio.sleep(1)
+                            
+                            await session_client.disconnect()
+                        
+                    except Exception as session_error:
+                        logger.debug(f"Не удалось использовать существующую сессию: {session_error}")
+                
+                await temp_client.disconnect()
+                logger.warning("⏰ Время ожидания кода истекло")
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка получения кода: {e}")
+            
+            # Fallback - возвращаем пустую строку
+            logger.error("❌ Не удалось получить код автоматически")
+            logger.info("💡 Установите TELEGRAM_CODE в переменные окружения")
+            return ""
+            
+        except Exception as e:
+            logger.error(f"❌ Критическая ошибка получения кода: {e}")
+            return ""
+    
+    async def _perform_automatic_auth(self):
+        """Выполнение полностью автоматической авторизации"""
+        try:
+            # Получаем телефон из переменных окружения
+            if not self.phone:
+                self.phone = os.getenv('TELEGRAM_PHONE')
+                if not self.phone:
+                    logger.error("❌ TELEGRAM_PHONE не указан в переменных окружения")
+                    return False
+            
+            logger.info(f"📞 Автоматическая авторизация с номером: {self.phone}")
+            
+            # Отправляем запрос кода
+            sent_code = await self.client.send_code_request(self.phone)
+            logger.info("📱 Код авторизации отправлен")
+            
+            # Получаем код автоматически
+            code = await self._get_code_from_telegram_after_request()
+            
+            if not code:
+                logger.error("❌ Не удалось получить код автоматически")
+                return False
+            
+            logger.info(f"🔑 Используем код: {code}")
+            
+            try:
+                # Пытаемся войти с кодом
+                await self.client.sign_in(self.phone, code)
+                logger.info("✅ Авторизация с кодом успешна")
+                return True
+                
+            except Exception as sign_in_error:
+                error_str = str(sign_in_error)
+                
+                if "Two-step verification" in error_str or "password" in error_str.lower():
+                    # Нужен пароль 2FA
+                    password = os.getenv('TELEGRAM_PASSWORD')
+                    if password:
+                        logger.info("🔒 Используем пароль 2FA из переменных окружения")
+                        await self.client.sign_in(password=password)
+                        logger.info("✅ Авторизация с 2FA успешна")
+                        return True
+                    else:
+                        logger.error("❌ Требуется пароль 2FA, но TELEGRAM_PASSWORD не установлен")
+                        return False
+                else:
+                    logger.error(f"❌ Ошибка входа: {sign_in_error}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка автоматической авторизации: {e}")
+            return False
     
     async def initialize(self):
         """Инициализация Telegram клиента"""
@@ -125,21 +305,20 @@ class TelegramListener:
             # Подключаемся с автоматической авторизацией
             try:
                 # Пробуем подключиться с существующей сессией
-                await self.client.start()
-            except Exception as auth_error:
-                logger.info(f"🔑 Сессия не найдена, выполняем авторизацию: {auth_error}")
+                await self.client.connect()
                 
-                # Автоматическая авторизация с телефоном из .env
-                try:
-                    await self.client.start(
-                        phone=self.phone,
-                        code_callback=self._get_code_from_telegram,
-                        password=os.getenv('TELEGRAM_PASSWORD', '')
-                    )
-                    logger.info("✅ Автоматическая авторизация успешна")
-                except Exception as e:
-                    logger.error(f"❌ Автоматическая авторизация не удалась: {e}")
-                    logger.info("💡 Проверьте TELEGRAM_PHONE и TELEGRAM_CODE в .env файле")
+                if await self.client.is_user_authorized():
+                    logger.info("✅ Используем существующую сессию")
+                else:
+                    # Выполняем автоматическую авторизацию
+                    if not await self._perform_automatic_auth():
+                        return False
+                        
+            except Exception as auth_error:
+                logger.info(f"🔑 Ошибка подключения, выполняем авторизацию: {auth_error}")
+                
+                # Выполняем автоматическую авторизацию
+                if not await self._perform_automatic_auth():
                     return False
             
             # Проверяем авторизацию
@@ -215,6 +394,11 @@ class TelegramListener:
             logger.error(f"Error in Telegram listener: {e}")
             raise
     
+    def set_message_handler(self, handler_func):
+        """Установка внешнего обработчика сообщений"""
+        self.external_message_handler = handler_func
+        logger.info("External message handler set")
+    
     async def _handle_message(self, event):
         """Обработка нового сообщения"""
         try:
@@ -277,6 +461,25 @@ class TelegramListener:
             self.stats['by_channel'][chat_id]['signals'] += 1
             
             logger.info(f"Signal detected from {channel_config.channel_name}")
+            
+            # Вызываем внешний обработчик если он установлен
+            if self.external_message_handler:
+                try:
+                    message_data = {
+                        "chat_id": chat_id,
+                        "message_id": event.message.id,
+                        "text": message_text,
+                        "timestamp": event.message.date,
+                        "has_image": has_image,
+                        "channel_name": channel_config.channel_name,
+                        "trader_id": channel_config.trader_id
+                    }
+                    
+                    await self.external_message_handler(message_data)
+                    logger.debug(f"External handler called for message from {channel_config.channel_name}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in external message handler: {e}")
             
             # Отправляем на парсинг (текст и/или изображение)
             await self._process_signal(message_text, channel_config, event, has_image)
