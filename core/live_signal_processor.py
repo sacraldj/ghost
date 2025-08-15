@@ -312,10 +312,10 @@ class LiveSignalProcessor:
             
             # Подготавливаем данные для signals_parsed
             parsed_data = {
-                "trader_id": signal.trader_id,
+                "trader_id": source_config.source_id,  # Используем source_id вместо signal.trader_id
                 "posted_at": signal.received_at.isoformat(),
                 "symbol": signal.symbol,
-                "side": signal.side,
+                "side": "BUY" if signal.side == "LONG" else "SELL" if signal.side == "SHORT" else signal.side,
                 "entry_type": signal.entry_type,
                 "entry": float(signal.entry_single) if signal.entry_single else None,
                 "range_low": float(min(signal.entry_zone)) if signal.entry_zone else None,
@@ -327,14 +327,14 @@ class LiveSignalProcessor:
                 "sl": float(signal.sl) if signal.sl else None,
                 "leverage_hint": self._extract_leverage_number(signal.leverage),
                 "confidence": float(signal.confidence) if signal.confidence else None,
-                "parse_version": "unified_v1.0",
+                "parse_version": "v1.0",
                 "checksum": self._generate_signal_checksum(signal),
                 "is_valid": signal.is_valid,
-                # Дополнительные поля для Whales Guide
-                "message_type": getattr(signal, 'message_type', 'trading_signal'),
-                "market_analysis": getattr(signal, 'analysis', None),
-                "detected_trader_style": getattr(signal, 'detected_trader_style', None),
-                "detection_confidence": getattr(signal, 'detection_confidence', None)
+                # Дополнительные поля для Whales Guide (временно отключены)
+                # "message_type": getattr(signal, 'message_type', 'trading_signal'),
+                # "market_analysis": getattr(signal, 'analysis', None),
+                # "detected_trader_style": getattr(signal, 'detected_trader_style', None),
+                # "detection_confidence": getattr(signal, 'detection_confidence', None)
             }
             
             result = self.supabase.table("signals_parsed").insert(parsed_data).execute()
