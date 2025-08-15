@@ -168,7 +168,7 @@ class TelegramListener:
             
             # Создаем отдельный клиент для получения сообщений
             import asyncio
-            import re
+                        import re
             from datetime import datetime, timedelta
             
             try:
@@ -212,8 +212,8 @@ class TelegramListener:
                                                     code = match.group(1)
                                                     logger.info(f"✅ Получен код из сообщения: {code}")
                                                     await session_client.disconnect()
-                                                    await temp_client.disconnect()
-                                                    return code
+                            await temp_client.disconnect()
+                            return code
                                     
                                     await asyncio.sleep(2)
                                     
@@ -456,8 +456,8 @@ class TelegramListener:
                 is_signal = (message_text and len(message_text) > 10) or has_image
             else:
                 # Для других каналов - стандартная логика
-                is_text_signal = message_text and self._looks_like_signal(message_text)
-                is_image_signal = has_image
+            is_text_signal = message_text and self._looks_like_signal(message_text)
+            is_image_signal = has_image
                 is_signal = is_text_signal or is_image_signal
             
             if not is_signal:
