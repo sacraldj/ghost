@@ -587,30 +587,280 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
             return None
     
     def _parse_whales_guide_signal(self, text: str) -> Optional[Dict]:
-        """Парсер Whales Guide (наша разработка)"""
+        """Улучшенный парсер Whales Guide - извлекает данные из ВСЕХ типов сообщений"""
         try:
-            # Используем существующий Whales парсер
-            from signals.whales_crypto_parser import WhalesCryptoParser
-            parser = WhalesCryptoParser()
+            import re
             
-            if parser.can_parse(text):
-                result = parser.parse_signal(text, "whales_guide")
-                if result:
+            text_upper = text.upper()
+            text_clean = re.sub(r'[^\w\s\.\$\-\#\:\(\)\/]', ' ', text_upper)
+            
+            # Извлекаем символ криптовалюты (множественные паттерны)
+            symbol = self._extract_symbol_comprehensive(text_clean)
+            if not symbol:
+                return None
+            
+            # Определяем направление (LONG/SHORT или анализируем контекст)
+            side = self._extract_direction_comprehensive(text_clean)
+            
+            # Извлекаем цены и уровни
+            prices = self._extract_all_prices(text)
+            
+            # Извлекаем entry зоны
+            entry = self._extract_entry_comprehensive(text_clean, prices)
+            
+            # Извлекаем targets
+            targets = self._extract_targets_comprehensive(text_clean, prices)
+            
+            # Извлекаем stop loss
+            stop_loss = self._extract_stop_loss_comprehensive(text_clean, prices)
+            
+            # Извлекаем leverage
+            leverage = self._extract_leverage_comprehensive(text_clean)
+            
+            # Извлекаем дополнительную информацию
+            analysis = self._extract_market_analysis(text)
+            
+            # Если не удалось извлечь основные торговые данные, сохраняем как анализ
+            if not entry and not targets and not stop_loss:
+                if symbol and (side or analysis):
                     return {
-                        "symbol": result.symbol,
-                        "side": result.direction.value,
-                        "entry": result.entry_zone if result.entry_zone else [result.entry_single],
-                        "targets": result.targets,
-                        "stop_loss": result.stop_loss,
-                        "leverage": result.leverage,
-                        "reason": result.reason,
+                        "symbol": symbol,
+                        "side": side or "ANALYSIS",
+                        "entry": [],
+                        "targets": [],
+                        "stop_loss": None,
+                        "leverage": leverage,
+                        "analysis": analysis,
+                        "message_type": "market_analysis",
+                        "source_type": "whales_guide"
+                    }
+            
+            # Стандартный торговый сигнал
+            if symbol and side and (entry or targets):
+                return {
+                    "symbol": symbol,
+                    "side": side,
+                    "entry": entry or [],
+                    "targets": targets or [],
+                    "stop_loss": stop_loss,
+                    "leverage": leverage,
+                    "analysis": analysis,
+                    "message_type": "trading_signal",
                         "source_type": "whales_guide"
                     }
             
             return None
 
         except Exception as e:
-            logger.debug(f"Whales Guide parser error: {e}")
+            logger.debug(f"Whales Guide enhanced parser error: {e}")
+            return None
+    
+    def _extract_symbol_comprehensive(self, text: str) -> Optional[str]:
+        """Извлечение символа криптовалюты из любого типа сообщения"""
+        # Паттерны для поиска символов
+        patterns = [
+            r'([A-Z]{2,15})USDT',           # BTCUSDT
+            r'([A-Z]{2,15})/USDT',          # BTC/USDT  
+            r'([A-Z]{2,15})\s*USDT',        # BTC USDT
+            r'\$([A-Z]{2,15})',             # $BTC
+            r'#([A-Z]{2,15})',              # #BTC
+            r'\b([A-Z]{2,15})\b',           # BTC (отдельное слово)
+        ]
+        
+        # Известные криптовалютные символы (расширенный список)
+        crypto_symbols = [
+            # Топ криптовалюты
+            'BTC', 'ETH', 'BNB', 'ADA', 'XRP', 'SOL', 'DOT', 'DOGE', 'MATIC', 'AVAX',
+            'SHIB', 'LTC', 'LINK', 'UNI', 'ATOM', 'XLM', 'VET', 'ICP', 'FIL', 'TRX',
+            'ETC', 'FTT', 'NEAR', 'ALGO', 'MANA', 'SAND', 'GALA', 'APE', 'LRC', 'CRV',
+            'AAVE', 'MKR', 'COMP', 'SNX', 'YFI', 'SUSHI', 'BAL', 'ZRX', 'KNC', 'REN',
+            # Дополнительные токены часто встречающиеNear в Whales Guide
+            'BEL', 'BELLA', 'CHZ', 'ENJ', 'FLOW', 'GRT', 'HBAR', 'HOT', 'IOST', 'IOTA',
+            'JST', 'KSM', 'KAVA', 'MINA', 'NEO', 'OMG', 'QTUM', 'RUNE', 'STORJ', 'SUSHI',
+            'SXP', 'THETA', 'TOMO', 'WAVES', 'WIN', 'ZEC', 'ZIL', 'ONT', 'ICX', 'NANO',
+            'DASH', 'DCR', 'DGB', 'RVN', 'BTT', 'CELR', 'COTI', 'DENT', 'FET', 'FTM',
+            'HIVE', 'IOTX', 'KEY', 'LOOM', 'NKN', 'NMR', 'NULS', 'OGN', 'ONE', 'OXT',
+            'PERP', 'PUNDIX', 'REEF', 'RSR', 'SKL', 'SLP', 'STMX', 'SUN', 'TLM', 'TROY',
+            'UNFI', 'UTK', 'WAN', 'WRX', 'ALPHA', 'ANKR', 'ARDR', 'ARPA', 'AUDIO', 'BAND',
+            'BAT', 'BEAM', 'BICO', 'BLKZ', 'BNT', 'BOND', 'BTS', 'BURGER', 'BZRX', 'C98',
+            'CAKE', 'CHR', 'CKB', 'CLV', 'COCOS', 'COS', 'CTK', 'CTXC', 'CVP', 'DATA',
+            'DF', 'DIA', 'DOCK', 'DODO', 'DUSK', 'DYDX', 'EGGG', 'ELF', 'ERN', 'FIRO'
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                if match in crypto_symbols:
+                    return f"{match}USDT"
+        
+        return None
+    
+    def _extract_direction_comprehensive(self, text: str) -> Optional[str]:
+        """Определение направления торговли"""
+        # Явные указания
+        if any(word in text for word in ['LONG', 'LONGING', 'BUY', 'BUYING']):
+            return "LONG"
+        if any(word in text for word in ['SHORT', 'SHORTING', 'SELL', 'SELLING']):
+            return "SHORT"
+        
+        # Анализ контекста
+        bullish_words = ['PUMP', 'MOON', 'BULLISH', 'UP', 'RISE', 'INCREASE', 'BREAKOUT']
+        bearish_words = ['DUMP', 'CRASH', 'BEARISH', 'DOWN', 'FALL', 'DECREASE', 'BREAKDOWN']
+        
+        bullish_count = sum(1 for word in bullish_words if word in text)
+        bearish_count = sum(1 for word in bearish_words if word in text)
+        
+        if bullish_count > bearish_count and bullish_count > 0:
+            return "LONG"
+        elif bearish_count > bullish_count and bearish_count > 0:
+            return "SHORT"
+        
+        return None
+    
+    def _extract_all_prices(self, text: str) -> List[float]:
+        """Извлечение всех цен из текста"""
+        import re
+        
+        prices = []
+        
+        # Паттерны для цен
+        price_patterns = [
+            r'\$\s*(\d+\.?\d*)',           # $45000.50
+            r'\$\s*(\d*\.\d{4,8})',        # $0.2793
+            r'(\d+\.\d{4,8})',             # 0.2793
+            r'(\d+\.\d{2,3})',             # 45000.12
+            r'(\d{4,})',                   # 45000
+        ]
+        
+        for pattern in price_patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                try:
+                    price = float(match.replace(',', ''))
+                    if 0.000001 <= price <= 1000000:  # Разумные пределы
+                        prices.append(price)
+                except:
+                    continue
+        
+        return sorted(list(set(prices)))  # Убираем дубликаты и сортируем
+    
+    def _extract_entry_comprehensive(self, text: str, prices: List[float]) -> List[float]:
+        """Извлечение зон входа"""
+        import re
+        
+        # Поиск явных указаний entry
+        entry_patterns = [
+            r'ENTRY[:\s]+(\d+\.?\d*)\s*[-/]\s*(\d+\.?\d*)',  # ENTRY: 45000-46000
+            r'ENTRY[:\s]+(\d+\.?\d*)',                       # ENTRY: 45000
+            r'BUY[:\s]+(\d+\.?\d*)\s*[-/]\s*(\d+\.?\d*)',   # BUY: 45000-46000
+            r'BUY[:\s]+(\d+\.?\d*)',                         # BUY: 45000
+        ]
+        
+        for pattern in entry_patterns:
+            match = re.search(pattern, text)
+            if match:
+                if len(match.groups()) == 2:
+                    return [float(match.group(1)), float(match.group(2))]
+                else:
+                    return [float(match.group(1))]
+        
+        # Если нет явных указаний, используем первые цены
+        if prices and len(prices) >= 2:
+            return prices[:2]
+        elif prices:
+            return [prices[0]]
+        
+        return []
+    
+    def _extract_targets_comprehensive(self, text: str, prices: List[float]) -> List[float]:
+        """Извлечение целевых уровней"""
+        import re
+        
+        targets = []
+        
+        # Поиск TP уровней
+        tp_patterns = [
+            r'TP\s*(\d+)[:\s]+(\d+\.?\d*)',  # TP1: 47000
+            r'TARGET[:\s]+(\d+\.?\d*)',       # TARGET: 47000
+            r'PROFIT[:\s]+(\d+\.?\d*)',       # PROFIT: 47000
+        ]
+        
+        for pattern in tp_patterns:
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                try:
+                    if len(match.groups()) == 2:
+                        targets.append(float(match.group(2)))
+                    else:
+                        targets.append(float(match.group(1)))
+                except:
+                    continue
+        
+        # Если нет явных TP, используем высокие цены
+        if not targets and prices:
+            # Берем цены выше среднего как потенциальные targets
+            if len(prices) > 2:
+                avg_price = sum(prices) / len(prices)
+                targets = [p for p in prices if p > avg_price]
+        
+        return sorted(targets)
+    
+    def _extract_stop_loss_comprehensive(self, text: str, prices: List[float]) -> Optional[float]:
+        """Извлечение уровня стоп-лосса"""
+        import re
+        
+        # Поиск явных указаний SL
+        sl_patterns = [
+            r'(STOP LOSS|STOPLOSS|SL)[:\s]+(\d+\.?\d*)',  # SL: 43000
+            r'STOP[:\s]+(\d+\.?\d*)',                      # STOP: 43000
+        ]
+        
+        for pattern in sl_patterns:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    return float(match.group(-1))  # Последняя группа
+                except:
+                    continue
+        
+        # Если нет явного SL, используем самую низкую цену
+        if prices:
+            return min(prices)
+        
+        return None
+    
+    def _extract_leverage_comprehensive(self, text: str) -> Optional[str]:
+        """Извлечение плеча"""
+        import re
+        
+        patterns = [
+            r'(\d{1,3})X',           # 10X
+            r'LEVERAGE[:\s]+(\d+)',  # LEVERAGE: 10
+            r'LEV[:\s]+(\d+)',       # LEV: 10
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return f"{match.group(1)}x"
+        
+        return None
+    
+    def _extract_market_analysis(self, text: str) -> Optional[str]:
+        """Извлечение рыночного анализа из сообщения"""
+        # Ключевые фразы анализа
+        analysis_indicators = [
+            'analysis', 'outlook', 'prediction', 'forecast', 'trend', 'pattern',
+            'support', 'resistance', 'breakout', 'breakdown', 'consolidation',
+            'bullish', 'bearish', 'neutral', 'overbought', 'oversold'
+        ]
+        
+        text_lower = text.lower()
+        
+        if any(indicator in text_lower for indicator in analysis_indicators):
+            # Возвращаем первые 200 символов как краткий анализ
+            return text[:200].strip()
+        
             return None
     
     def _is_valid_parse_result(self, result: Dict) -> bool:

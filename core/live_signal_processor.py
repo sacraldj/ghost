@@ -286,8 +286,12 @@ class LiveSignalProcessor:
                 "meta": {
                     "chat_id": message_data.get("chat_id"),
                     "source_name": source_config.name,
-                    "source_type": source_config.source_type,
-                    "processing_version": "v1.0"
+                    "source_type": source_config.source_type.value if hasattr(source_config.source_type, 'value') else str(source_config.source_type),
+                    "processing_version": "v1.0",
+                    "has_image": message_data.get("has_image", False),
+                    "channel_name": message_data.get("channel_name", ""),
+                    "message_length": len(text),
+                    "whales_guide_message": source_config.source_id == "whales_guide_main"
                 },
                 "processed": False
             }
@@ -325,7 +329,12 @@ class LiveSignalProcessor:
                 "confidence": float(signal.confidence) if signal.confidence else None,
                 "parse_version": "unified_v1.0",
                 "checksum": self._generate_signal_checksum(signal),
-                "is_valid": signal.is_valid
+                "is_valid": signal.is_valid,
+                # Дополнительные поля для Whales Guide
+                "message_type": getattr(signal, 'message_type', 'trading_signal'),
+                "market_analysis": getattr(signal, 'analysis', None),
+                "detected_trader_style": getattr(signal, 'detected_trader_style', None),
+                "detection_confidence": getattr(signal, 'detection_confidence', None)
             }
             
             result = self.supabase.table("signals_parsed").insert(parsed_data).execute()

@@ -168,7 +168,7 @@ class TelegramListener:
             
             # Создаем отдельный клиент для получения сообщений
             import asyncio
-            import re
+                        import re
             from datetime import datetime, timedelta
             
             try:
@@ -212,8 +212,8 @@ class TelegramListener:
                                                     code = match.group(1)
                                                     logger.info(f"✅ Получен код из сообщения: {code}")
                                                     await session_client.disconnect()
-                                                    await temp_client.disconnect()
-                                                    return code
+                            await temp_client.disconnect()
+                            return code
                                     
                                     await asyncio.sleep(2)
                                     
@@ -448,11 +448,19 @@ class TelegramListener:
             if not self._message_passes_filters(message_text, channel_config):
                 return
             
-            # Проверяем, похоже ли на торговый сигнал (текст или изображение)
+            # Для канала Whales Guide - обрабатываем ВСЕ сообщения с контентом
+            is_whales_guide = channel_config.trader_id == "whales_guide_main"
+            
+            if is_whales_guide:
+                # Для Whales Guide - берем все сообщения с текстом или изображениями
+                is_signal = (message_text and len(message_text) > 10) or has_image
+            else:
+                # Для других каналов - стандартная логика
             is_text_signal = message_text and self._looks_like_signal(message_text)
             is_image_signal = has_image
+                is_signal = is_text_signal or is_image_signal
             
-            if not is_text_signal and not is_image_signal:
+            if not is_signal:
                 logger.debug("Message doesn't look like a trading signal")
                 return
             
@@ -512,13 +520,42 @@ class TelegramListener:
         """Проверка, похож ли текст на торговый сигнал"""
         text_lower = text.lower()
         
-        # Должно содержать хотя бы 2 ключевых слова сигнала
-        keyword_count = 0
-        for keyword in self.global_signal_keywords:
-            if keyword in text_lower:
-                keyword_count += 1
+        # Для канала Whales Guide - захватываем ВСЕ сообщения с криптовалютной информацией
+        crypto_indicators = [
+            'btc', 'eth', 'usdt', 'bnb', 'ada', 'xrp', 'sol', 'dot', 'doge', 'matic',
+            'avax', 'shib', 'ltc', 'link', 'uni', 'atom', 'xlm', 'vet', 'icp', 'fil',
+            'trx', 'etc', 'ftt', 'near', 'algo', 'mana', 'sand', 'gala', 'ape', 'lrc',
+            'crypto', 'bitcoin', 'ethereum', 'binance', 'trading', 'signal', 'whale',
+            'long', 'short', 'buy', 'sell', 'pump', 'dump', 'bullish', 'bearish',
+            'entry', 'target', 'profit', 'loss', 'tp', 'sl', 'stop', 'resistance', 
+            'support', 'breakout', 'moon', 'gem', 'x10', 'x100', 'hodl', 'fomo',
+            'alert', 'call', 'analysis', 'market', 'price', 'trend', 'chart'
+        ]
         
-        return keyword_count >= 2
+        # Если содержит хотя бы 1 криптовалютный индикатор - считаем сигналом
+        for indicator in crypto_indicators:
+            if indicator in text_lower:
+                return True
+        
+        # Дополнительно проверяем паттерны цен и символов
+        import re
+        
+        # Паттерны цен ($1.23, 45000, 0.001234)
+        price_patterns = [
+            r'\$\d+\.?\d*',  # $123.45
+            r'\d+\.\d+',     # 123.45
+            r'\d{4,}',       # 45000
+        ]
+        
+        for pattern in price_patterns:
+            if re.search(pattern, text):
+                return True
+        
+        # Если сообщение длиннее 50 символов и содержит числа - тоже берем
+        if len(text) > 50 and re.search(r'\d', text):
+            return True
+            
+        return False
     
     async def _process_signal(self, text: str, config: ChannelConfig, event, has_image: bool = False):
         """Обработка сигнала через роутер (текст и/или изображение)"""

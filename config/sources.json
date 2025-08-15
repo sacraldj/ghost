@@ -5,38 +5,62 @@
       "source_type": "telegram_channel",
       "name": "Whales Crypto Guide",
       "connection_params": {
-        "channel_id": "-1001234567890",
-        "username": "@whalesguide"
+        "channel_id": "-1001288385100",
+        "username": "@Whalesguide"
       },
-      "parser_type": "whales_crypto_parser",
+      "parser_type": "whales_universal",
       "is_active": true,
       "priority": 10,
-      "min_confidence": 0.8,
+      "min_confidence": 0.6,
       "keywords_filter": [
-        "longing",
-        "buying",
-        "entry:",
-        "targets:",
-        "stoploss:",
-        "long (",
-        "short ("
+        "btc",
+        "eth", 
+        "usdt",
+        "long",
+        "short",
+        "buy",
+        "sell",
+        "entry",
+        "target",
+        "tp",
+        "sl",
+        "stop",
+        "profit",
+        "loss",
+        "signal",
+        "crypto",
+        "trading",
+        "bullish",
+        "bearish",
+        "pump",
+        "dump",
+        "moon",
+        "dip",
+        "breakout",
+        "resistance",
+        "support",
+        "whale",
+        "alert",
+        "call",
+        "gem",
+        "x10",
+        "x100",
+        "hodl",
+        "fomo"
       ],
       "exclude_keywords": [
-        "good morning",
-        "доброе утро",
-        "анализ рынка",
-        "market analysis",
-        "новости",
-        "news"
+        "spam",
+        "scam",
+        "fake"
       ],
-      "notes": "Основной канал Whales Guide для торговых сигналов"
+      "notes": "Канал Whales Crypto Guide - получаем ВСЕ сообщения с криптовалютной информацией"
     },
     {
       "source_id": "2trade_slivaem",
-      "source_type": "telegram_channel", 
+      "source_type": "telegram_channel",
       "name": "2Trade - slivaeminfo",
       "connection_params": {
-        "channel_id": "-1001234567891",
+        "channel_id": "-1001787721765",
         "username": "@slivaeminfo"
       },
       "parser_type": "2trade_parser",
@@ -65,10 +89,10 @@
       "source_type": "telegram_channel",
       "name": "Crypto Hub VIP",
       "connection_params": {
-        "channel_id": "-1001234567892",
+        "channel_id": "-1001688308280",
         "username": "@cryptohubvip"
       },
-      "parser_type": "crypto_hub_parser", 
+      "parser_type": "crypto_hub_parser",
       "is_active": true,
       "priority": 8,
       "min_confidence": 0.75,
@@ -91,9 +115,9 @@
     {
       "source_id": "coinpulse_signals",
       "source_type": "telegram_channel",
-      "name": "CoinPulse Signals", 
+      "name": "CoinPulse Signals",
       "connection_params": {
-        "channel_id": "-1001234567893",
+        "channel_id": "-1002680607584",
         "username": "@coinpulsesignals"
       },
       "parser_type": "coinpulse_parser",
@@ -103,7 +127,7 @@
       "keywords_filter": [
         "pair:",
         "#long",
-        "#short", 
+        "#short",
         "entry:",
         "stoploss:"
       ],
@@ -217,42 +241,96 @@
   "parser_mappings": {
     "whales_crypto_parser": {
       "description": "Специализированный парсер для Whales Guide",
-      "supported_languages": ["en"],
-      "patterns": ["longing #", "entry:", "targets:", "stoploss:"]
+      "supported_languages": [
+        "en"
+      ],
+      "patterns": [
+        "longing #",
+        "entry:",
+        "targets:",
+        "stoploss:"
+      ]
     },
     "2trade_parser": {
       "description": "Парсер для канала 2Trade с русскими сигналами",
-      "supported_languages": ["ru", "en"],
-      "patterns": ["long", "short", "вход:", "стоп:"]
+      "supported_languages": [
+        "ru",
+        "en"
+      ],
+      "patterns": [
+        "long",
+        "short",
+        "вход:",
+        "стоп:"
+      ]
     },
     "crypto_hub_parser": {
       "description": "Парсер для Crypto Hub VIP",
-      "supported_languages": ["en"],
-      "patterns": ["entry zone:", "tp1:", "tp2:", "stop loss:"]
+      "supported_languages": [
+        "en"
+      ],
+      "patterns": [
+        "entry zone:",
+        "tp1:",
+        "tp2:",
+        "stop loss:"
+      ]
     },
     "coinpulse_parser": {
       "description": "Парсер для CoinPulse формата",
-      "supported_languages": ["en"],
-      "patterns": ["pair:", "#long", "#short", "entry:", "stoploss:"]
+      "supported_languages": [
+        "en"
+      ],
+      "patterns": [
+        "pair:",
+        "#long",
+        "#short",
+        "entry:",
+        "stoploss:"
+      ]
     },
     "whales_universal": {
       "description": "Универсальный парсер для Whales-подобных форматов",
-      "supported_languages": ["en", "ru"],
-      "patterns": ["buy", "sell", "long", "short", "entry", "target"]
+      "supported_languages": [
+        "en",
+        "ru"
+      ],
+      "patterns": [
+        "buy",
+        "sell",
+        "long",
+        "short",
+        "entry",
+        "target"
+      ]
     },
     "discord_parser": {
       "description": "Парсер для Discord сообщений",
-      "supported_languages": ["en"],
-      "patterns": ["🔔 new trade alert", "entry:", "take profit:"]
+      "supported_languages": [
+        "en"
+      ],
+      "patterns": [
+        "🔔 new trade alert",
+        "entry:",
+        "take profit:"
+      ]
     },
     "rss_parser": {
       "description": "Парсер для RSS фидов",
-      "supported_languages": ["en"],
-      "patterns": ["signal", "trade alert", "recommendation"]
+      "supported_languages": [
+        "en"
+      ],
+      "patterns": [
+        "signal",
+        "trade alert",
+        "recommendation"
+      ]
     },
     "api_parser": {
       "description": "Парсер для внешних API",
-      "supported_languages": ["en"],
+      "supported_languages": [
+        "en"
+      ],
       "patterns": []
     }
   },
