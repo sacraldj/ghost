@@ -140,7 +140,7 @@
     },
     {
       "source_id": "discord_vip_traders",
-      "source_type": "discord",
+      "source_type": "discord_channel",
       "name": "VIP Traders Discord",
       "connection_params": {
         "guild_id": "123456789012345678",
@@ -165,7 +165,7 @@
     },
     {
       "source_id": "rss_feed_crypto",
-      "source_type": "rss",
+      "source_type": "rss_feed",
       "name": "Crypto RSS Feed",
       "connection_params": {
         "feed_url": "https://example.com/crypto-signals.rss",
@@ -188,7 +188,7 @@
     },
     {
       "source_id": "api_signals_external",
-      "source_type": "api",
+      "source_type": "api_endpoint",
       "name": "External API Signals",
       "connection_params": {
         "api_url": "https://api.example.com/signals",

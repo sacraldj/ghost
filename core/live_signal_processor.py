@@ -86,10 +86,12 @@ class LiveSignalProcessor:
     async def _start_telegram_processing(self):
         """Запуск обработки Telegram сообщений"""
         try:
+            from core.channel_manager import SourceType
+            
             # Получаем Telegram источники
             telegram_sources = [
                 s for s in self.channel_manager.get_active_sources() 
-                if s.source_type.startswith("telegram")
+                if s.source_type in [SourceType.TELEGRAM_CHANNEL, SourceType.TELEGRAM_GROUP]
             ]
             
             if not telegram_sources:
@@ -182,17 +184,25 @@ class LiveSignalProcessor:
                 return source
         return None
     
-    def _map_source_type(self, source_type: str) -> SignalSource:
+    def _map_source_type(self, source_type) -> SignalSource:
         """Маппинг типа источника в SignalSource enum"""
+        from core.channel_manager import SourceType
+        
+        # Если передан enum, извлекаем значение
+        if isinstance(source_type, SourceType):
+            source_type_str = source_type.value
+        else:
+            source_type_str = str(source_type)
+            
         mapping = {
             "telegram_channel": SignalSource.TELEGRAM_WHALESGUIDE,
             "telegram_whalesguide": SignalSource.TELEGRAM_WHALESGUIDE,
             "telegram_2trade": SignalSource.TELEGRAM_2TRADE,
             "telegram_crypto_hub": SignalSource.TELEGRAM_CRYPTO_HUB,
             "telegram_coinpulse": SignalSource.TELEGRAM_COINPULSE,
-            "discord_vip": SignalSource.DISCORD_VIP,
+            "discord_channel": SignalSource.DISCORD_VIP,
         }
-        return mapping.get(source_type, SignalSource.UNKNOWN)
+        return mapping.get(source_type_str, SignalSource.UNKNOWN)
     
     def _message_looks_like_signal(self, text: str, source_config: SourceConfig) -> bool:
         """Проверка, похоже ли сообщение на сигнал"""
