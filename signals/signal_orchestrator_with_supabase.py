@@ -219,10 +219,9 @@ class SignalOrchestratorWithSupabase:
             # Подготавливаем данные для сохранения сырого сигнала
             raw_data = {
                 'trader_id': trader_id,
-                'raw_text': raw_text,
-                'received_at': datetime.now().isoformat(),
-                'processed': False,
-                'source_type': 'telegram'
+                'text': raw_text,  # Исправлено: поле называется 'text' в Prisma схеме
+                'posted_at': datetime.now().isoformat(),
+                'processed': False
             }
             
             # Сохраняем в таблицу signals_raw
@@ -251,7 +250,7 @@ class SignalOrchestratorWithSupabase:
             signal_data = {
                 'trader_id': signal.trader_id,
                 'symbol': signal.symbol,
-                'side': signal.direction.upper() if hasattr(signal, 'direction') else 'UNKNOWN',
+                'side': str(signal.direction).upper() if hasattr(signal, 'direction') else 'UNKNOWN',
                 'entry_type': getattr(signal, 'entry_type', 'market'),
                 'entry': float(signal.entry_price) if hasattr(signal, 'entry_price') and signal.entry_price else None,
                 'range_low': float(min(signal.entry_zone)) if hasattr(signal, 'entry_zone') and signal.entry_zone else None,
