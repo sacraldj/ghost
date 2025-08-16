@@ -1,10 +1,18 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Avatar, AvatarFallback } from './ui/avatar'
+
+// Динамический импорт RealtimeChart
+const RealtimeChart = dynamic(() => import('./RealtimeChart'), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-gray-800 rounded-lg animate-pulse" />
+})
 
 interface TraderStats {
   id: string
@@ -42,6 +50,7 @@ interface TradersData {
 }
 
 const TradersDashboard: React.FC = () => {
+  const router = useRouter()
   const [data, setData] = useState<TradersData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,14 +60,48 @@ const TradersDashboard: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/traders?period=${selectedPeriod}&sortBy=${sortBy}&limit=20`)
+      // Используем правильный API роут
+      const response = await fetch(`/api/trader-observation?action=traders`)
       const result = await response.json()
       
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch traders data')
       }
       
-      setData(result)
+      // Преобразуем данные из trader-observation формата в TradersDashboard формат
+      const transformedData = {
+        traders: (result.traders || []).map((trader: any) => ({
+          id: trader.trader_id,
+          name: trader.name,
+          avatar: trader.name.charAt(0),
+          channel: trader.source_handle,
+          totalSignals: trader.total_signals || 0,
+          winRate: trader.tp1_rate || 0,
+          roi: trader.total_pnl || 0,
+          pnl: trader.total_pnl || 0,
+          avgHoldTime: trader.avg_time_to_tp1 ? `${Math.round(trader.avg_time_to_tp1/60)}h ${trader.avg_time_to_tp1%60}m` : '0h 0m',
+          lastSignal: trader.last_signal_at ? new Date(trader.last_signal_at).toLocaleDateString('ru-RU') : 'Нет данных',
+          status: trader.is_active ? 'active' : 'inactive',
+          performance7d: trader.pnl_30d || 0,
+          performance30d: trader.pnl_30d || 0,
+          successfulTrades: trader.tp1_count + trader.tp2_count || 0,
+          totalTrades: trader.executed_signals || 0,
+          maxDrawdown: 0,
+          sharpeRatio: trader.profit_factor || 0,
+          totalVolume: trader.total_signals * 100 || 0, // Приблизительно
+          followers: 0
+        })),
+        summary: {
+          totalTraders: result.total || 0,
+          activeTraders: (result.traders || []).filter((t: any) => t.is_active).length,
+          totalSignals: (result.traders || []).reduce((sum: number, t: any) => sum + (t.total_signals || 0), 0),
+          avgWinRate: (result.traders || []).reduce((sum: number, t: any) => sum + (t.tp1_rate || 0), 0) / Math.max((result.traders || []).length, 1),
+          totalPnL: (result.traders || []).reduce((sum: number, t: any) => sum + (t.total_pnl || 0), 0),
+          bestPerformer: (result.traders || []).sort((a: any, b: any) => (b.total_pnl || 0) - (a.total_pnl || 0))[0]?.name || ''
+        }
+      }
+      
+      setData(transformedData)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -184,8 +227,16 @@ const TradersDashboard: React.FC = () => {
     </div>
   )
 
+  const handleTraderClick = (traderId: string) => {
+    router.push(`/traders/${traderId}`)
+  }
+
   const renderTraderRow = (trader: TraderStats, index: number) => (
-    <tr key={trader.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+    <tr 
+      key={trader.id} 
+      className="border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer transition-colors"
+      onClick={() => handleTraderClick(trader.id)}
+    >
       <td className="px-4 py-3">
         <div className="flex items-center space-x-3">
           <Avatar className="w-8 h-8">
@@ -298,6 +349,23 @@ const TradersDashboard: React.FC = () => {
 
       {/* Summary Cards */}
       {renderSummaryCards()}
+
+      {/* Realtime P&L Chart */}
+      <Card className="bg-gray-900 border-gray-800">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center space-x-2">
+            <span>📈</span>
+            <span>Live Market P&L</span>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          </CardTitle>
+          <CardDescription className="text-gray-400">
+            Real-time price movements and portfolio performance
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RealtimeChart />
+        </CardContent>
+      </Card>
 
       {/* Period Tabs */}
       {renderPeriodTabs()}

@@ -4,10 +4,11 @@ GHOST Parser Factory
 """
 
 import logging
+import os
+import sys
 from typing import Dict, Type, Optional, Any, List
 from abc import ABC, abstractmethod
 
-from signals.whales_crypto_parser import WhalesCryptoParser
 from signals.trader_detector import TraderDetector, TraderStyle
 
 logger = logging.getLogger(__name__)
@@ -128,11 +129,35 @@ class ParserFactory:
         logger.info("Parser Factory initialized")
     
     def _register_default_parsers(self):
-        """Регистрация стандартных парсеров"""
+        """Регистрация только лучших и рабочих парсеров"""
+        # Основные рабочие парсеры
         self.register_parser("whales_universal", UniversalWhalesParser)
-        self.register_parser("whales_crypto_parser", UniversalWhalesParser)  # Алиас
+        self.register_parser("whales_crypto_parser", UniversalWhalesParser)  # Алиас для совместимости
         self.register_parser("2trade_parser", Trade2Parser)
-        self.register_parser("vip_signals_parser", VIPSignalsParser)
+        
+        # Специализированный парсер CryptoAttack24
+        try:
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
+            from cryptoattack24_parser import CryptoAttack24Parser
+            
+            # Создаем wrapper класс для совместимости
+            class CryptoAttack24ParserWrapper(SignalParserInterface):
+                def __init__(self):
+                    self.parser = CryptoAttack24Parser()
+                
+                def can_parse(self, text: str) -> bool:
+                    return "cryptoattack24" in text.lower() or any(word in text.lower() for word in ["запампили", "закрепился", "alpine", "авиакомпании"])
+                
+                def parse_signal(self, text: str, trader_id: str) -> Optional[Any]:
+                    result = self.parser.parse_message(text)
+                    return result if result and result.confidence > 0.6 else None
+            
+            self.register_parser("cryptoattack24_parser", CryptoAttack24ParserWrapper)
+            logger.info("✅ CryptoAttack24Parser registered successfully")
+        except ImportError as e:
+            logger.warning(f"⚠️ CryptoAttack24Parser not available: {e}")
+        
+        # Оставляем только для совместимости, но с низким приоритетом
         self.register_parser("discord_parser", DiscordParser)
     
     def register_parser(self, parser_type: str, parser_class: Type[SignalParserInterface]):

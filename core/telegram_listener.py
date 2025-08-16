@@ -168,7 +168,7 @@ class TelegramListener:
             
             # Создаем отдельный клиент для получения сообщений
             import asyncio
-            import re
+                        import re
             from datetime import datetime, timedelta
             
             try:
@@ -212,8 +212,8 @@ class TelegramListener:
                                                     code = match.group(1)
                                                     logger.info(f"✅ Получен код из сообщения: {code}")
                                                     await session_client.disconnect()
-                                                    await temp_client.disconnect()
-                                                    return code
+                            await temp_client.disconnect()
+                            return code
                                     
                                     await asyncio.sleep(2)
                                     
@@ -299,7 +299,7 @@ class TelegramListener:
         try:
             # Создаем клиент
             # Путь к сессии относительно корня проекта
-            session_path = os.path.join('..', 'ghost_session')
+            session_path = 'ghost_session'
             self.client = TelegramClient(session_path, self.api_id, self.api_hash)
             
             # Подключаемся с автоматической авторизацией
@@ -310,8 +310,10 @@ class TelegramListener:
                 if await self.client.is_user_authorized():
                     logger.info("✅ Используем существующую сессию")
                 else:
+                    logger.info("🔑 Сессия недействительна, выполняем автоматическую авторизацию...")
                     # Выполняем автоматическую авторизацию
                     if not await self._perform_automatic_auth():
+                        logger.error("❌ Автоматическая авторизация не удалась")
                         return False
                         
             except Exception as auth_error:
@@ -319,6 +321,7 @@ class TelegramListener:
                 
                 # Выполняем автоматическую авторизацию
                 if not await self._perform_automatic_auth():
+                    logger.error("❌ Автоматическая авторизация не удалась")
                     return False
             
             # Проверяем авторизацию
@@ -784,7 +787,7 @@ async def main():
         listener = TelegramListener(api_id, api_hash, phone)
         
         # Загружаем конфигурацию каналов
-        config_path = os.path.join('..', 'config', 'telegram_channels.json')
+        config_path = os.path.join('config', 'telegram_channels.json')
         listener.load_channels_from_config(config_path)
         
         # Инициализируем

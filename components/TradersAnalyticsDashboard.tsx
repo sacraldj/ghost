@@ -24,6 +24,8 @@ interface TraderStats {
   status: 'active' | 'inactive' | 'stopped'
   is_trading: boolean // Торгуем или только статистика
   last_signal: string
+  start_date: string // Дата старта торговли
+  capital: number // Капитал для торговли
 }
 
 interface OverallStats {
@@ -47,6 +49,15 @@ const TradersAnalyticsDashboard: React.FC = () => {
   const [showOnlyTrading, setShowOnlyTrading] = useState(false)
   const [chartData, setChartData] = useState<any[]>([])
   const [selectedTraderModal, setSelectedTraderModal] = useState<string | null>(null)
+  const [selectedStrategy, setSelectedStrategy] = useState<'all' | 'tp2_sl_be' | 'scalping' | 'swing'>('tp2_sl_be')
+  const [showStrategyDropdown, setShowStrategyDropdown] = useState(false)
+
+  const strategies = [
+    { id: 'tp2_sl_be', label: 'TP2 & SL → BE', icon: '📈', description: 'Два тейк-профита, стоп в безубыток' },
+    { id: 'scalping', label: 'Scalping', icon: '⚡', description: 'Быстрые сделки, малый профит' },
+    { id: 'swing', label: 'Swing Trading', icon: '🎯', description: 'Средне-срочные позиции' },
+    { id: 'all', label: 'Все стратегии', icon: '🔄', description: 'Смешанная торговля' }
+  ]
 
   const periods = [
     { id: '7d', label: '7d' },
@@ -59,23 +70,38 @@ const TradersAnalyticsDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData()
-  }, [selectedPeriod, selectedTrader, showOnlyTrading])
+  }, [selectedPeriod, selectedTrader, showOnlyTrading, selectedStrategy])
+
+  // Закрываем dropdown при клике вне его
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.strategy-dropdown')) {
+        setShowStrategyDropdown(false)
+      }
+    }
+
+    if (showStrategyDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showStrategyDropdown])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      // Загружаем общую статистику
-      const statsResponse = await fetch(`/api/traders-analytics/summary?period=${selectedPeriod}&trader=${selectedTrader}&trading_only=${showOnlyTrading}`)
+      // Загружаем общую статистику с учётом стратегии
+      const statsResponse = await fetch(`/api/traders-analytics/summary?period=${selectedPeriod}&trader=${selectedTrader}&trading_only=${showOnlyTrading}&strategy=${selectedStrategy}`)
       const statsData = await statsResponse.json()
       setOverallStats(statsData)
 
-      // Загружаем список трейдеров
-      const tradersResponse = await fetch(`/api/traders-analytics/list?period=${selectedPeriod}&trading_only=${showOnlyTrading}`)
+      // Загружаем список трейдеров с пересчётом ROI для выбранной стратегии
+      const tradersResponse = await fetch(`/api/traders-analytics/list?period=${selectedPeriod}&trading_only=${showOnlyTrading}&strategy=${selectedStrategy}`)
       const tradersData = await tradersResponse.json()
       setTraders(tradersData.traders || [])
 
       // Загружаем данные для графика P&L
-      const chartResponse = await fetch(`/api/traders-analytics/chart?period=${selectedPeriod}&trader=${selectedTrader}`)
+      const chartResponse = await fetch(`/api/traders-analytics/chart?period=${selectedPeriod}&trader=${selectedTrader}&strategy=${selectedStrategy}`)
       const chartData = await chartResponse.json()
       setChartData(chartData.data || [])
 
@@ -83,6 +109,15 @@ const TradersAnalyticsDashboard: React.FC = () => {
       console.error('Error loading traders analytics:', error)
     }
     setLoading(false)
+  }
+
+  const handleStrategyChange = (strategyId: string) => {
+    setSelectedStrategy(strategyId as any)
+    setShowStrategyDropdown(false)
+  }
+
+  const getCurrentStrategy = () => {
+    return strategies.find(s => s.id === selectedStrategy) || strategies[0]
   }
 
   const toggleTraderStatus = async (traderId: string, action: 'enable' | 'disable') => {
@@ -144,9 +179,42 @@ const TradersAnalyticsDashboard: React.FC = () => {
           <div className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
             СТАТИСТИКА ПО ТРЕЙДЕРАМ
           </div>
-          <div className="bg-yellow-500 text-black px-4 py-2 rounded-lg font-medium flex items-center space-x-2">
-            <span>👥</span>
-            <span>ALL TRADERS</span>
+          <div className="relative strategy-dropdown">
+            <button
+              onClick={() => setShowStrategyDropdown(!showStrategyDropdown)}
+              className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-medium flex items-center space-x-2 transition-colors cursor-pointer"
+            >
+              <span>{getCurrentStrategy().icon}</span>
+              <span>{getCurrentStrategy().label}</span>
+              <span className="ml-2">▼</span>
+            </button>
+            
+            {showStrategyDropdown && (
+              <div className="absolute top-full left-0 mt-2 w-80 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-50">
+                <div className="p-2">
+                  <div className="text-xs text-gray-400 mb-2 px-2">Выберите торговую стратегию:</div>
+                  {strategies.map((strategy) => (
+                    <button
+                      key={strategy.id}
+                      onClick={() => handleStrategyChange(strategy.id)}
+                      className={`w-full text-left p-3 rounded-lg transition-colors ${
+                        selectedStrategy === strategy.id
+                          ? 'bg-yellow-500 text-black'
+                          : 'bg-gray-700 hover:bg-gray-600 text-white'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="text-lg">{strategy.icon}</span>
+                        <div>
+                          <div className="font-medium">{strategy.label}</div>
+                          <div className="text-xs opacity-75">{strategy.description}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         
@@ -262,7 +330,15 @@ const TradersAnalyticsDashboard: React.FC = () => {
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-white">Trader Ranking</CardTitle>
+            <div className="flex items-center space-x-4">
+              <CardTitle className="text-white">Trader Ranking</CardTitle>
+              <div className="flex items-center space-x-2 text-sm">
+                <span className="text-gray-400">Стратегия:</span>
+                <div className="bg-gray-700 px-2 py-1 rounded text-white text-xs">
+                  {getCurrentStrategy().icon} {getCurrentStrategy().label}
+                </div>
+              </div>
+            </div>
             <div className="flex items-center space-x-2 text-sm">
               <span className="text-gray-400">Last Month</span>
               <select className="bg-gray-800 border border-gray-600 rounded px-2 py-1">
@@ -288,7 +364,8 @@ const TradersAnalyticsDashboard: React.FC = () => {
                   <th className="text-center p-3">Последняя сделка</th>
                   <th className="text-center p-3">Тренд ROI</th>
                   <th className="text-center p-3">Trust</th>
-                  <th className="text-center p-3">Статус</th>
+                  <th className="text-center p-3">Старт</th>
+                  <th className="text-center p-3">Капитал</th>
                   <th className="text-center p-3">Активация</th>
                 </tr>
               </thead>
@@ -320,8 +397,11 @@ const TradersAnalyticsDashboard: React.FC = () => {
                     <td className="text-center p-3 text-gray-400 text-xs">{trader.last_signal}</td>
                     <td className="text-center p-3">{getTrendIcon(trader.trend)}</td>
                     <td className="text-center p-3 text-white">{trader.trust}%</td>
-                    <td className="text-center p-3">
-                      {getStatusBadge(trader.status)}
+                    <td className="text-center p-3 text-gray-400 text-xs">
+                      {trader.start_date || '2025-08-15'}
+                    </td>
+                    <td className="text-center p-3 text-green-400 font-medium">
+                      ${(trader.capital || 10000).toLocaleString()}
                     </td>
                     <td className="text-center p-3">
                       {trader.is_trading ? (

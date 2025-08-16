@@ -161,13 +161,25 @@ class UnifiedSignalParser:
         self.trader_detector = TraderDetector()
         self.parser_factory = ParserFactory()
         
-        # Специализированные парсеры (по опыту Дарена)
+        # Специализированные парсеры (только лучшие и рабочие)
         self.specialized_parsers = {
+            "whales_guide": self._parse_whales_guide_signal,
+            "cryptoattack24": self._parse_cryptoattack24_signal,
             "2trade": self._parse_2trade_signal,
-            "crypto_hub": self._parse_crypto_hub_signal,
-            "coinpulse": self._parse_coinpulse_signal,
-            "whales_guide": self._parse_whales_guide_signal
+            "crypto_hub": self._parse_crypto_hub_signal
         }
+        
+        # Импортируем внешний парсер CryptoAttack24
+        self.cryptoattack24_parser = None
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
+            from cryptoattack24_parser import CryptoAttack24Parser
+            self.cryptoattack24_parser = CryptoAttack24Parser()
+            logger.info("✅ CryptoAttack24Parser loaded successfully")
+        except ImportError as e:
+            logger.warning(f"⚠️ CryptoAttack24Parser not available: {e}")
         
         # AI клиенты для fallback
         self.ai_clients = {}
@@ -289,6 +301,8 @@ class UnifiedSignalParser:
             parser_candidates.append("coinpulse")
         elif "whales" in signal.trader_id.lower():
             parser_candidates.append("whales_guide")
+        elif "cryptoattack24" in signal.trader_id.lower():
+            parser_candidates.append("cryptoattack24")
         
         # Добавляем fallback парсеры
         parser_candidates.extend(["whales_guide", "2trade", "crypto_hub"])
@@ -653,6 +667,108 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
 
         except Exception as e:
             logger.debug(f"Whales Guide enhanced parser error: {e}")
+            return None
+    
+    def _parse_cryptoattack24_signal(self, text: str) -> Optional[Dict]:
+        """Парсер для КриптоАтака 24 - использует специализированный парсер"""
+        if self.cryptoattack24_parser:
+            try:
+                result = self.cryptoattack24_parser.parse_message(text)
+                if result:
+                    return {
+                        "symbol": result.symbol,
+                        "side": "LONG" if result.action in ["pump", "growth"] else "NEWS",
+                        "entry": [],
+                        "targets": [],
+                        "stop_loss": None,
+                        "leverage": None,
+                        "analysis": result.context,
+                        "price_movement": result.price_movement,
+                        "exchange": result.exchange,
+                        "sector": result.sector,
+                        "message_type": "news_signal",
+                        "source_type": "cryptoattack24"
+                    }
+            except Exception as e:
+                logger.debug(f"CryptoAttack24 specialized parser error: {e}")
+        
+        # Fallback к простому парсингу
+        return self._parse_cryptoattack24_fallback(text)
+    
+    def _parse_cryptoattack24_fallback(self, text: str) -> Optional[Dict]:
+        """Парсер для CryptoAttack24 - новостные сигналы и движения цен"""
+        try:
+            import re
+            
+            # Импортируем наш специализированный парсер
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
+            
+            try:
+                from cryptoattack24_parser import CryptoAttack24Parser
+                parser = CryptoAttack24Parser()
+                result = parser.parse_message(text)
+                
+                if result:
+                    # Преобразуем в формат UnifiedSignal
+                    return {
+                        "symbol": result.symbol,
+                        "side": "Buy" if result.action in ["pump", "growth"] else "Analysis",
+                        "entry": [],
+                        "targets": [],
+                        "stop_loss": None,
+                        "leverage": None,
+                        "analysis": result.context,
+                        "message_type": "news_signal" if result.action == "pump" else "market_analysis",
+                        "source_type": "cryptoattack24",
+                        "confidence": result.confidence,
+                        "price_movement": result.price_movement,
+                        "exchange": result.exchange,
+                        "sector": result.sector
+                    }
+                    
+            except ImportError:
+                logger.debug("CryptoAttack24Parser not available, using fallback")
+                
+                # Fallback парсинг
+                text_lower = text.lower()
+                
+                # Поиск символа
+                symbol_match = re.search(r'#?([A-Z]{2,10})\b', text.upper())
+                if symbol_match:
+                    symbol = symbol_match.group(1)
+                    
+                    # Определяем тип события
+                    if any(word in text_lower for word in ['запампили', 'рост', 'выросли']):
+                        action_type = "pump"
+                    elif any(word in text_lower for word in ['закрепился', 'топе', 'первое место']):
+                        action_type = "consolidation"
+                    else:
+                        action_type = "news"
+                    
+                    # Поиск процентного движения
+                    price_match = re.search(r'\+(\d+)%', text)
+                    price_movement = price_match.group(0) if price_match else None
+                    
+                    return {
+                        "symbol": symbol,
+                        "side": "Buy" if action_type == "pump" else "Analysis",
+                        "entry": [],
+                        "targets": [],
+                        "stop_loss": None,
+                        "leverage": None,
+                        "analysis": text[:100],
+                        "message_type": "news_signal",
+                        "source_type": "cryptoattack24",
+                        "confidence": 0.7,
+                        "price_movement": price_movement
+                    }
+            
+            return None
+
+        except Exception as e:
+            logger.debug(f"CryptoAttack24 parser error: {e}")
             return None
     
     def _extract_symbol_comprehensive(self, text: str) -> Optional[str]:

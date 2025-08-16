@@ -3,7 +3,7 @@
     {
       "channel_id": "-1001288385100",
       "channel_name": "Whales Crypto Guide",
-      "trader_id": "crypto_hub_vip",
+      "trader_id": "whales_guide_main",
       "is_active": true,
       "description": "Premium crypto signals channel",
       "keywords_filter": [
@@ -85,6 +85,44 @@
       ],
       "source_type": "telegram",
       "parsing_profile": "coinpulse_v1"
+    },
+    {
+      "channel_id": "-1001263635145",
+      "channel_name": "КриптоАтака 24",
+      "trader_id": "cryptoattack24",
+      "is_active": true,
+      "description": "Авиакомпании и туристические агентства, криптовалютные сигналы",
+      "keywords_filter": [
+        "запампили",
+        "закрепился",
+        "топе",
+        "покупкам",
+        "лидеров",
+        "рост",
+        "alpine",
+        "binance",
+        "cex",
+        "первое место",
+        "авиакомпании",
+        "туристические",
+        "агентства",
+        "emirates",
+        "air arabia",
+        "travala",
+        "alternative airlines",
+        "бронирований",
+        "криптовалюты",
+        "оплаты",
+        "поддерживают",
+        "использование"
+      ],
+      "exclude_keywords": [
+        "примечательно",
+        "покидает",
+        "до сих пор"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "cryptoattack24_v1"
     }
   ],
   "global_settings": {

@@ -217,7 +217,7 @@ class GhostOrchestrator:
                     'dependencies': []
                 },
                 'telegram_listener': {
-                    'enabled': False,  # Пока отключен
+                    'enabled': True,  # ✅ ВКЛЮЧЕН - основной слушатель Telegram
                     'command': ['python3', 'telegram_listener.py'],
                     'working_dir': 'core',
                     'restart_on_failure': True,
@@ -225,7 +225,7 @@ class GhostOrchestrator:
                     'dependencies': []
                 },
                 'trade_executor': {
-                    'enabled': False,  # Пока отключен
+                    'enabled': False,  # Пока отключен - будет включен позже
                     'command': ['python3', 'trade_executor.py'],
                     'working_dir': 'core',
                     'restart_on_failure': True,
@@ -233,7 +233,7 @@ class GhostOrchestrator:
                     'dependencies': ['telegram_listener']
                 },
                 'position_manager': {
-                    'enabled': False,  # Пока отключен
+                    'enabled': False,  # Пока отключен - будет включен позже
                     'command': ['python3', 'position_manager.py'],
                     'working_dir': 'core',
                     'restart_on_failure': True,

@@ -1,7 +1,6 @@
 """
 GHOST 2Trade Parser
-Парсер для сигналов формата канала 2Trade
-На основе архитектуры системы Дарена
+Специализированный парсер для канала 2Trade (@slivaeminfo)
 """
 
 import re
@@ -13,32 +12,43 @@ from signals.signal_parser_base import SignalParserBase, ParsedSignal, SignalDir
 logger = logging.getLogger(__name__)
 
 class TwoTradeParser(SignalParserBase):
-    """Парсер для сигналов канала 2Trade"""
+    """Специализированный парсер для канала 2Trade"""
     
     def __init__(self):
-        super().__init__("2trade")
+        super().__init__("2trade_slivaeminfo")
         
         # Паттерны для распознавания формата 2Trade
         self.format_patterns = [
-            r'PAIR:\s*[A-Z]+',  # PAIR: SUI
-            r'DIRECTION:\s*(?:LONG|SHORT)',  # DIRECTION: LONG
-            r'ENTRY:\s*[0-9\.\$\-\s]+',  # ENTRY: $3.80 - $3.90
-            r'TP\d+:\s*\$?[0-9\.]+',  # TP1: $4.05
-            r'SL:\s*\$?[0-9\.]+',  # SL: $3.50
-            r'LEVERAGE:\s*\d+X',  # LEVERAGE: 10X
+            r'[A-Z]+USDT\s+(LONG|SHORT)',  # BTCUSDT LONG
+            r'PAIR:\s*[A-Z]+',             # PAIR: BTC
+            r'DIRECTION:\s*(LONG|SHORT)',   # DIRECTION: LONG
+            r'ВХОД:\s*[0-9\-\s]+',         # ВХОД: 45000
+            r'ЦЕЛИ:\s*[0-9\s]+',           # ЦЕЛИ:
+            r'СТОП:\s*[0-9\.]+',           # СТОП: 43000
+        ]
+        
+        # Ключевые слова для дополнительного распознавания
+        self.trade2_keywords = [
+            'вход:', 'цели:', 'стоп:',
+            'pair:', 'direction:', 'entry:', 'tp1:', 'sl:',
+            'leverage:', 'плечо:'
         ]
     
     def can_parse(self, text: str) -> bool:
-        """Проверка, подходит ли текст для парсера 2Trade"""
-        text_clean = self.clean_text(text)
+        """Проверка, подходит ли текст для этого парсера"""
+        text_clean = self.clean_text(text).lower()
         
-        # Должно быть минимум 3 паттерна из 6
+        # Проверяем основные паттерны
         matched_patterns = 0
         for pattern in self.format_patterns:
             if re.search(pattern, text_clean, re.IGNORECASE):
                 matched_patterns += 1
         
-        return matched_patterns >= 3
+        # Проверяем ключевые слова
+        keyword_matches = sum(1 for keyword in self.trade2_keywords if keyword in text_clean)
+        
+        # Если найдено 3+ паттернов или 2+ ключевых слов
+        return matched_patterns >= 3 or keyword_matches >= 2
     
     def parse_signal(self, text: str, trader_id: str) -> Optional[ParsedSignal]:
         """Основная функция парсинга сигнала 2Trade"""
@@ -77,26 +87,16 @@ class TwoTradeParser(SignalParserBase):
             
             # Заполняем отдельные TP поля
             if signal.targets:
-                if len(signal.targets) >= 1:
-                    signal.tp1 = signal.targets[0]
-                if len(signal.targets) >= 2:
-                    signal.tp2 = signal.targets[1]
-                if len(signal.targets) >= 3:
-                    signal.tp3 = signal.targets[2]
-                if len(signal.targets) >= 4:
-                    signal.tp4 = signal.targets[3]
+                signal.tp1 = signal.targets[0] if len(signal.targets) > 0 else None
+                signal.tp2 = signal.targets[1] if len(signal.targets) > 1 else None
+                signal.tp3 = signal.targets[2] if len(signal.targets) > 2 else None
+                signal.tp4 = signal.targets[3] if len(signal.targets) > 3 else None
             
-            # Устанавливаем single entry
-            if signal.entry_zone:
-                signal.entry_single = sum(signal.entry_zone) / len(signal.entry_zone)
+            # Рассчитываем уверенность
+            signal.confidence = self.calculate_confidence_2trade(signal, text_clean)
             
             # Валидация
-            self.validate_signal(signal)
-            
-            # Расчет уверенности
-            signal.confidence = calculate_confidence(signal)
-            
-            self.logger.info(f"Parsed 2Trade signal: {symbol} {direction.value} (confidence: {signal.confidence:.1f}%)")
+            signal.is_valid = self.validate_2trade_signal(signal)
             
             return signal
             
@@ -105,187 +105,207 @@ class TwoTradeParser(SignalParserBase):
             return None
     
     def extract_symbol_2trade(self, text: str) -> Optional[str]:
-        """Извлечение символа для формата 2Trade"""
-        # Ищем "PAIR: SUI"
-        pattern = r'PAIR:\s*([A-Z]+)'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение символа из формата 2Trade"""
+        # Паттерны для 2Trade формата
+        patterns = [
+            r'([A-Z]{2,10})USDT\s+(LONG|SHORT)',  # BTCUSDT LONG
+            r'PAIR:\s*([A-Z]{2,10})',             # PAIR: BTC
+            r'([A-Z]{2,10})/USDT',                # BTC/USDT
+            r'#([A-Z]{2,10})',                    # #BTC
+        ]
         
-        if match:
-            return match.group(1).upper()
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                symbol = match.group(1).upper()
+                # Нормализуем символ
+                if symbol.endswith('USDT'):
+                    symbol = symbol[:-4]
+                elif symbol.endswith('USD'):
+                    symbol = symbol[:-3]
+                return symbol
         
-        # Fallback на базовый метод
-        return self.extract_symbol(text)
+        return None
     
     def extract_direction_2trade(self, text: str) -> Optional[SignalDirection]:
-        """Извлечение направления для 2Trade"""
-        # Ищем "DIRECTION: LONG"
-        pattern = r'DIRECTION:\s*(LONG|SHORT)'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение направления из формата 2Trade"""
+        text_lower = text.lower()
         
-        if match:
-            direction_str = match.group(1).upper()
-            if direction_str == 'LONG':
-                return SignalDirection.LONG
-            elif direction_str == 'SHORT':
-                return SignalDirection.SHORT
+        # 2Trade специфичные паттерны
+        if any(word in text_lower for word in ['long', 'лонг', 'direction: long']):
+            return SignalDirection.BUY
+        elif any(word in text_lower for word in ['short', 'шорт', 'direction: short']):
+            return SignalDirection.SELL
         
-        # Fallback на базовый метод
-        return self.extract_direction(text)
-    
-    def extract_leverage_2trade(self, text: str) -> Optional[str]:
-        """Извлечение плеча для 2Trade"""
-        # Ищем "LEVERAGE: 10X"
-        pattern = r'LEVERAGE:\s*(\d+X?)'
-        match = re.search(pattern, text, re.IGNORECASE)
-        
-        if match:
-            leverage = match.group(1).upper()
-            if not leverage.endswith('X'):
-                leverage += 'X'
-            return leverage
-        
-        return self.extract_leverage(text)
+        return None
     
     def extract_entry_zone_2trade(self, text: str) -> List[float]:
-        """Извлечение зоны входа для 2Trade"""
-        # Ищем "ENTRY: $3.80 - $3.90" или "ENTRY: $3.85"
-        pattern = r'ENTRY:\s*\$?([0-9]+\.?[0-9]*)\s*(?:-\s*\$?([0-9]+\.?[0-9]*))?'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение зоны входа из формата 2Trade"""
+        entry_zone = []
         
-        if match:
-            try:
-                price1 = float(match.group(1))
-                prices = [price1]
-                
-                if match.group(2):  # Есть второя цена (диапазон)
-                    price2 = float(match.group(2))
-                    prices.append(price2)
-                
-                return sorted(prices)
-            except ValueError:
-                pass
+        # Паттерны для входа 2Trade
+        patterns = [
+            r'ВХОД:\s*([0-9\-\s\.]+)',      # ВХОД: 45000
+            r'ENTRY:\s*([0-9\-\s\.]+)',     # ENTRY: 43000-43500
+            r'Entry:\s*\$?([0-9\-\s\.]+)',  # Entry: $43000
+        ]
         
-        # Fallback на базовый метод
-        return self.extract_entry_zone(text)
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                entry_text = match.group(1)
+                
+                # Ищем диапазон или одиночную цену
+                if '-' in entry_text:
+                    # Диапазон
+                    parts = entry_text.split('-')
+                    if len(parts) == 2:
+                        try:
+                            entry_zone.extend([float(parts[0].strip()), float(parts[1].strip())])
+                        except ValueError:
+                            continue
+                else:
+                    # Одиночная цена
+                    try:
+                        price = float(entry_text.strip())
+                        entry_zone.append(price)
+                    except ValueError:
+                        continue
+                break
+        
+        return entry_zone
     
     def extract_targets_2trade(self, text: str) -> List[float]:
-        """Извлечение целей для 2Trade"""
+        """Извлечение целей из формата 2Trade"""
         targets = []
         
-        # Ищем "TP1: $4.05", "TP2: $4.20", etc.
-        tp_pattern = r'TP(\d+):\s*\$?([0-9]+\.?[0-9]*)'
-        matches = re.findall(tp_pattern, text, re.IGNORECASE)
+        # Ищем блок с целями после "ЦЕЛИ:" или "TP"
+        lines = text.split('\n')
+        in_targets_section = False
         
-        # Сортируем по номеру TP
-        sorted_matches = sorted(matches, key=lambda x: int(x[0]))
-        
-        for tp_num, price_str in sorted_matches:
-            try:
-                price = float(price_str)
-                if price > 0:
-                    targets.append(price)
-            except ValueError:
+        for line in lines:
+            line = line.strip()
+            
+            # Начало секции целей
+            if re.match(r'(ЦЕЛИ|TP|Targets?):', line, re.IGNORECASE):
+                in_targets_section = True
+                # Проверяем, есть ли цены в той же строке
+                numbers = re.findall(r'([0-9]+\.?[0-9]*)', line)
+                for num_str in numbers:
+                    try:
+                        targets.append(float(num_str))
+                    except ValueError:
+                        continue
                 continue
-        
-        # Если не нашли через TP паттерн, fallback на базовый
-        if not targets:
-            targets = self.extract_targets(text)
+            
+            # Если мы в секции целей и строка содержит только числа
+            if in_targets_section:
+                # Проверяем, не начинается ли новая секция
+                if re.match(r'(СТОП|SL|Stop)', line, re.IGNORECASE):
+                    break
+                
+                # Извлекаем числа из строки
+                numbers = re.findall(r'([0-9]+\.?[0-9]*)', line)
+                for num_str in numbers:
+                    try:
+                        price = float(num_str)
+                        # Фильтруем слишком маленькие числа (вероятно, не цены)
+                        if price > 0.0001:
+                            targets.append(price)
+                    except ValueError:
+                        continue
+                
+                # Если строка пустая или не содержит чисел, возможно конец секции
+                if not numbers and line:
+                    break
         
         return targets
     
     def extract_stop_loss_2trade(self, text: str) -> Optional[float]:
-        """Извлечение стоп-лосса для 2Trade"""
-        # Ищем "SL: $3.50"
-        pattern = r'SL:\s*\$?([0-9]+\.?[0-9]*)'
-        match = re.search(pattern, text, re.IGNORECASE)
-        
-        if match:
-            try:
-                return float(match.group(1))
-            except ValueError:
-                pass
-        
-        # Fallback на базовый метод
-        return self.extract_stop_loss(text)
-    
-    def extract_reason_2trade(self, text: str) -> Optional[str]:
-        """Извлечение обоснования для 2Trade"""
-        # Ищем строки после основных параметров
-        # Может быть "REASON:" или просто текст в конце
-        
-        # Сначала пробуем найти явное REASON:
-        pattern = r'REASON:\s*(.+?)(?:\n|$)'
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-        
-        if match:
-            reason = match.group(1).strip()
-            return re.sub(r'\s+', ' ', reason)
-        
-        # Ищем текст после всех основных полей
-        # Удаляем все известные поля и смотрим, что осталось
-        clean_text = text
-        
-        fields_to_remove = [
-            r'PAIR:\s*[A-Z]+',
-            r'DIRECTION:\s*(?:LONG|SHORT)',
-            r'ENTRY:\s*[0-9\.\$\-\s]+',
-            r'TP\d+:\s*\$?[0-9\.]+',
-            r'SL:\s*\$?[0-9\.]+',
-            r'LEVERAGE:\s*\d+X?',
+        """Извлечение стоп-лосса из формата 2Trade"""
+        patterns = [
+            r'СТОП:\s*([0-9\.]+)',        # СТОП: 43000
+            r'SL:\s*([0-9\.]+)',          # SL: 41500
+            r'Stop\s*Loss:\s*([0-9\.]+)', # Stop Loss: 41500
         ]
         
-        for pattern in fields_to_remove:
-            clean_text = re.sub(pattern, '', clean_text, flags=re.IGNORECASE)
-        
-        # Очищаем оставшийся текст
-        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-        
-        if clean_text and len(clean_text) > 10:  # Минимальная длина для разумного обоснования
-            return clean_text
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return float(match.group(1))
         
         return None
-
-# Функция для тестирования парсера
-def test_2trade_parser():
-    """Тестирование парсера 2Trade"""
-    sample_signal = """
-    PAIR: SUI
-    DIRECTION: LONG
-    ENTRY: $3.80 - $3.90
-    TP1: $4.05
-    TP2: $4.20
-    TP3: $4.35
-    SL: $3.50
-    LEVERAGE: 10X
     
-    Strong bullish momentum, expecting breakout above resistance.
-    """
-    
-    parser = TwoTradeParser()
-    
-    print("🧪 Testing 2Trade Parser")
-    print(f"Can parse: {parser.can_parse(sample_signal)}")
-    
-    if parser.can_parse(sample_signal):
-        signal = parser.parse_signal(sample_signal, "2trade_test")
+    def extract_leverage_2trade(self, text: str) -> Optional[str]:
+        """Извлечение плеча из формата 2Trade"""
+        patterns = [
+            r'LEVERAGE:\s*([0-9]+)X?',    # LEVERAGE: 10X
+            r'ПЛЕЧО:\s*([0-9]+)X?',       # ПЛЕЧО: 10
+            r'([0-9]+)x\s*leverage',      # 10x leverage
+        ]
         
-        if signal:
-            print(f"✅ Parsed successfully!")
-            print(f"Symbol: {signal.symbol}")
-            print(f"Direction: {signal.direction.value}")
-            print(f"Leverage: {signal.leverage}")
-            print(f"Entry Zone: {signal.entry_zone}")
-            print(f"Targets: {signal.targets}")
-            print(f"Stop Loss: {signal.stop_loss}")
-            print(f"Reason: {signal.reason}")
-            print(f"Confidence: {signal.confidence:.1f}%")
-            print(f"Valid: {signal.is_valid}")
-            if signal.parse_errors:
-                print(f"Errors: {signal.parse_errors}")
-        else:
-            print("❌ Failed to parse")
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                leverage_num = match.group(1)
+                return f"{leverage_num}x"
+        
+        return None
     
-    return parser
-
-if __name__ == "__main__":
-    test_2trade_parser()
+    def extract_reason_2trade(self, text: str) -> Optional[str]:
+        """Извлечение обоснования из формата 2Trade"""
+        # 2Trade обычно не предоставляет подробных обоснований
+        # Но можем попробовать найти комментарии
+        reason_patterns = [
+            r'(?:Причина|Reason|Note):\s*(.+)',
+            r'(?:Комментарий|Comment):\s*(.+)',
+        ]
+        
+        for pattern in reason_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        return None
+    
+    def calculate_confidence_2trade(self, signal: ParsedSignal, text: str) -> float:
+        """Расчет уверенности для 2Trade сигнала"""
+        confidence = 0.6  # Базовая уверенность (2Trade обычно структурирован)
+        
+        # Бонусы за наличие компонентов
+        if signal.entry_zone:
+            confidence += 0.2
+        if signal.targets and len(signal.targets) >= 2:
+            confidence += 0.15
+        if signal.stop_loss:
+            confidence += 0.15
+        if signal.leverage:
+            confidence += 0.05
+        
+        # Проверка структурированности
+        if 'ВХОД:' in text and 'СТОП:' in text:
+            confidence += 0.1
+        
+        return min(confidence, 1.0)
+    
+    def validate_2trade_signal(self, signal: ParsedSignal) -> bool:
+        """Валидация 2Trade сигнала"""
+        # Обязательные поля
+        if not all([signal.symbol, signal.direction]):
+            return False
+        
+        # Должна быть хотя бы цена входа или цели
+        if not signal.entry_zone and not signal.targets:
+            return False
+        
+        # Проверка логичности цен
+        if signal.entry_zone and signal.stop_loss:
+            avg_entry = sum(signal.entry_zone) / len(signal.entry_zone)
+            if signal.direction == SignalDirection.BUY:
+                if signal.stop_loss >= avg_entry:  # SL должен быть ниже входа для LONG
+                    return False
+            else:
+                if signal.stop_loss <= avg_entry:  # SL должен быть выше входа для SHORT
+                    return False
+        
+        return True

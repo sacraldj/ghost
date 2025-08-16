@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     let signalsQuery = supabase
       .from('signals_parsed')
       .select('*')
-      .order('id', { ascending: true })
+      .order('parsed_at', { ascending: true })
 
     if (trader !== 'all') {
       signalsQuery = signalsQuery.eq('trader_id', trader)
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       cumulativePnL += normalizedPnL
 
       return {
-        date: signal.created_at,
+        date: signal.parsed_at || signal.posted_at,
         pnl: normalizedPnL,
         cumulative_pnl: cumulativePnL,
         trader_id: signal.trader_id

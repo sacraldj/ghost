@@ -1,0 +1,32 @@
+{
+  "КриптоАтака 24": {
+    "id": "-1001263635145",
+    "name": "КриптоАтака 24 🦾",
+    "username": "@cryptoattack24",
+    "type": "channel"
+  },
+  "@cryptoattack24": {
+    "id": "-1001263635145",
+    "name": "КриптоАтака 24 🦾",
+    "username": "@cryptoattack24",
+    "type": "channel"
+  },
+  "Whales Crypto Guide": {
+    "id": "-1001288385100",
+    "name": "Whales Crypto Guide",
+    "username": "@Whalesguide",
+    "type": "channel"
+  },
+  "@Whalesguide": {
+    "id": "1288385100",
+    "name": "Whales Crypto Guide",
+    "username": "@Whalesguide",
+    "type": "channel"
+  },
+  "@slivaeminfo": {
+    "id": "1915101334",
+    "name": "SLIVAEMINFO.RU",
+    "username": "@slivaeminfo",
+    "type": "channel"
+  }
+}

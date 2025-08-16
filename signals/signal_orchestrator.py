@@ -1,51 +1,104 @@
 """
 GHOST Signal Orchestrator
-Оркестратор для обработки сигналов из разных источников и сохранения в БД
+Оркестратор для управления всеми специализированными парсерами сигналов
+Каждый канал трейдера имеет свой специализированный парсер
 """
 
 import asyncio
 import logging
-import os
-import sys
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional
-import json
 import sqlite3
+import json
+import os
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 from dataclasses import asdict
 
-# Добавляем путь к корню проекта
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from signals.signal_parser_base import ParsedSignal
+# Импортируем специализированные парсеры для каждого канала
 from signals.whales_crypto_parser import WhalesCryptoParser
 from signals.parser_2trade import TwoTradeParser
 from signals.crypto_hub_parser import CryptoHubParser
-from database.supabase_client import SupabaseClient
+from signals.signal_parser_base import ParsedSignal
+
+# Импортируем CryptoAttack24 парсер
+try:
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
+    from cryptoattack24_parser import CryptoAttack24Parser
+    CRYPTOATTACK24_AVAILABLE = True
+except ImportError:
+    CRYPTOATTACK24_AVAILABLE = False
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('signal_orchestrator.log'),
+        logging.FileHandler('logs/signal_orchestrator.log'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
 class SignalOrchestrator:
-    """Оркестратор для управления всеми парсерами сигналов"""
+    """Оркестратор для управления всеми специализированными парсерами сигналов"""
     
     def __init__(self):
-        # Инициализируем парсеры
+        # Инициализируем специализированные парсеры для каждого канала трейдера
         self.parsers = {
-            'whales_crypto': WhalesCryptoParser(),
-            'two_trade': TwoTradeParser(),
-            'crypto_hub': CryptoHubParser()
+            # Основные парсеры каналов
+            'whales_guide_main': WhalesCryptoParser(),
+            'whales_crypto_guide': WhalesCryptoParser(),  # Алиас
+            '2trade_premium': TwoTradeParser(),
+            'slivaeminfo': TwoTradeParser(),  # Алиас для 2Trade
+            'crypto_hub_vip': CryptoHubParser(),
+            'cryptohubvip': CryptoHubParser(),  # Алиас
         }
         
-        # База данных
-        self.supabase = SupabaseClient()
+        # Добавляем CryptoAttack24 парсер если доступен
+        if CRYPTOATTACK24_AVAILABLE:
+            # Создаем wrapper для совместимости с SignalParserBase
+            class CryptoAttack24Wrapper:
+                def __init__(self):
+                    self.parser = CryptoAttack24Parser()
+                    self.source_name = "cryptoattack24"
+                
+                def can_parse(self, text: str) -> bool:
+                    return self.parser._is_noise(text) == False and len(text.strip()) > 20
+                
+                def parse_signal(self, text: str, trader_id: str) -> Optional[ParsedSignal]:
+                    result = self.parser.parse_message(text)
+                    if result and result.confidence >= 0.6:
+                        # Конвертируем в ParsedSignal формат
+                        return self._convert_to_parsed_signal(result, trader_id, text)
+                    return None
+                
+                def _convert_to_parsed_signal(self, ca24_signal, trader_id: str, raw_text: str) -> ParsedSignal:
+                    from signals.signal_parser_base import SignalDirection
+                    
+                    # Определяем направление на основе действия
+                    direction = SignalDirection.BUY if ca24_signal.action in ["pump", "growth"] else SignalDirection.SELL
+                    
+                    signal = ParsedSignal(
+                        signal_id=f"{trader_id}_{int(datetime.now().timestamp())}",
+                        source="cryptoattack24",
+                        trader_id=trader_id,
+                        raw_text=raw_text,
+                        timestamp=ca24_signal.timestamp or datetime.now(),
+                        symbol=ca24_signal.symbol,
+                        direction=direction
+                    )
+                    
+                    # Дополнительные поля
+                    signal.confidence = ca24_signal.confidence
+                    signal.reason = ca24_signal.context
+                    signal.is_valid = True
+                    
+                    return signal
+            
+            self.parsers['cryptoattack24'] = CryptoAttack24Wrapper()
+            logger.info("✅ CryptoAttack24 parser integrated successfully")
+        
+        # Локальная база данных для кеширования
         self.local_db_path = 'signals_orchestrator.db'
         
         # Статистика
@@ -58,56 +111,65 @@ class SignalOrchestrator:
         }
         
         self.init_local_database()
+        logger.info(f"Signal Orchestrator initialized with {len(self.parsers)} specialized parsers")
     
     def init_local_database(self):
-        """Инициализация локальной базы данных"""
+        """Инициализация локальной базы данных для кеширования"""
         try:
-            conn = sqlite3.connect(self.local_db_path)
-            cursor = conn.cursor()
+            os.makedirs('logs', exist_ok=True)
             
-            # Таблица для обработанных сигналов
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS processed_signals (
-                    id INTEGER PRIMARY KEY,
-                    signal_id TEXT UNIQUE,
-                    source TEXT,
-                    trader_id TEXT,
-                    symbol TEXT,
-                    direction TEXT,
-                    confidence REAL,
-                    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    saved_to_supabase BOOLEAN DEFAULT FALSE,
-                    error_message TEXT
-                )
-            ''')
-            
-            # Таблица для статистики парсеров
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS parser_stats (
-                    id INTEGER PRIMARY KEY,
-                    parser_name TEXT,
-                    date DATE,
-                    signals_processed INTEGER DEFAULT 0,
-                    success_rate REAL DEFAULT 0.0,
-                    avg_confidence REAL DEFAULT 0.0
-                )
-            ''')
-            
-            conn.commit()
-            conn.close()
-            logger.info("✅ Local orchestrator database initialized")
-            
+            with sqlite3.connect(self.local_db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Таблица для сырых сигналов
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS signals_raw (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        trader_id TEXT NOT NULL,
+                        parser_used TEXT NOT NULL,
+                        raw_text TEXT NOT NULL,
+                        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        success BOOLEAN NOT NULL,
+                        confidence REAL,
+                        metadata TEXT
+                    )
+                ''')
+                
+                # Таблица для обработанных сигналов
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS signals_parsed (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        signal_id TEXT UNIQUE NOT NULL,
+                        trader_id TEXT NOT NULL,
+                        parser_used TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        direction TEXT NOT NULL,
+                        entry_zone TEXT,
+                        targets TEXT,
+                        stop_loss REAL,
+                        leverage TEXT,
+                        confidence REAL,
+                        is_valid BOOLEAN,
+                        reason TEXT,
+                        raw_text TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                conn.commit()
+                logger.info("✅ Local database initialized")
+                
         except Exception as e:
             logger.error(f"❌ Failed to initialize local database: {e}")
     
-    async def process_raw_signal(self, raw_text: str, source: str, trader_id: str) -> Optional[ParsedSignal]:
+    async def process_raw_signal(self, raw_text: str, trader_id: str, source_hint: str = None) -> Optional[ParsedSignal]:
         """
-        Обработка сырого текста сигнала через подходящий парсер
+        Обработка сырого текста сигнала через подходящий специализированный парсер
         
         Args:
             raw_text: Исходный текст сигнала
-            source: Источник сигнала (whales_crypto, two_trade, etc.)
-            trader_id: Идентификатор трейдера
+            trader_id: Идентификатор трейдера/канала
+            source_hint: Подсказка об источнике для выбора парсера
             
         Returns:
             Обработанный сигнал или None
@@ -115,27 +177,49 @@ class SignalOrchestrator:
         try:
             self.stats['signals_processed'] += 1
             
-            # Пробуем найти подходящий парсер
+            # Определяем подходящий парсер
             best_parser = None
             best_parser_name = None
             
-            # Если указан конкретный источник, используем его
-            if source in self.parsers:
-                parser = self.parsers[source]
+            # 1. Сначала пробуем по trader_id (самый точный способ)
+            if trader_id in self.parsers:
+                parser = self.parsers[trader_id]
                 if parser.can_parse(raw_text):
                     best_parser = parser
-                    best_parser_name = source
-            else:
-                # Автоматический выбор парсера
-                for parser_name, parser in self.parsers.items():
-                    if parser.can_parse(raw_text):
-                        best_parser = parser
-                        best_parser_name = parser_name
-                        break
+                    best_parser_name = trader_id
+            
+            # 2. Если не нашли, пробуем по source_hint
+            if not best_parser and source_hint and source_hint in self.parsers:
+                parser = self.parsers[source_hint]
+                if parser.can_parse(raw_text):
+                    best_parser = parser
+                    best_parser_name = source_hint
+            
+            # 3. Если все еще не нашли, пробуем все парсеры по порядку
+            if not best_parser:
+                # Приоритет: специализированные парсеры сначала
+                priority_order = ['whales_guide_main', 'cryptoattack24', '2trade_premium', 'crypto_hub_vip']
+                
+                for parser_name in priority_order:
+                    if parser_name in self.parsers:
+                        parser = self.parsers[parser_name]
+                        if parser.can_parse(raw_text):
+                            best_parser = parser
+                            best_parser_name = parser_name
+                            break
+                
+                # Если приоритетные не сработали, пробуем остальные
+                if not best_parser:
+                    for parser_name, parser in self.parsers.items():
+                        if parser_name not in priority_order and parser.can_parse(raw_text):
+                            best_parser = parser
+                            best_parser_name = parser_name
+                            break
             
             if not best_parser:
-                logger.warning(f"⚠️ No suitable parser found for signal from {source}")
+                logger.warning(f"⚠️ No suitable parser found for signal from {trader_id}")
                 self.stats['signals_failed'] += 1
+                await self._save_raw_signal(trader_id, "none", raw_text, False, 0.0)
                 return None
             
             # Парсим сигнал
@@ -144,30 +228,18 @@ class SignalOrchestrator:
             if not signal:
                 logger.warning(f"⚠️ Failed to parse signal with {best_parser_name}")
                 self.stats['signals_failed'] += 1
+                await self._save_raw_signal(trader_id, best_parser_name, raw_text, False, 0.0)
                 return None
             
             # Обновляем статистику парсера
             self.stats['parsers_used'][best_parser_name] += 1
+            self.stats['signals_saved'] += 1
             
-            # Дополняем информацией об источнике
-            signal.parser_used = best_parser_name
-            signal.processed_at = datetime.now()
+            # Сохраняем результат
+            await self._save_raw_signal(trader_id, best_parser_name, raw_text, True, signal.confidence)
+            await self._save_parsed_signal(signal, best_parser_name)
             
-            logger.info(f"✅ Signal parsed by {best_parser_name}: {signal.symbol} {signal.direction.value}")
-            
-            # Сохраняем в локальную БД
-            await self.save_signal_local(signal)
-            
-            # Сохраняем в Supabase
-            saved = await self.save_signal_supabase(signal)
-            
-            if saved:
-                self.stats['signals_saved'] += 1
-                logger.info(f"💾 Signal saved to database: {signal.symbol}")
-            else:
-                logger.error(f"❌ Failed to save signal: {signal.symbol}")
-                self.stats['signals_failed'] += 1
-            
+            logger.info(f"✅ Signal parsed successfully: {signal.symbol} {signal.direction.value} by {best_parser_name}")
             return signal
             
         except Exception as e:
@@ -175,221 +247,151 @@ class SignalOrchestrator:
             self.stats['signals_failed'] += 1
             return None
     
-    async def save_signal_local(self, signal: ParsedSignal):
-        """Сохранение сигнала в локальную БД"""
+    async def _save_raw_signal(self, trader_id: str, parser_used: str, raw_text: str, success: bool, confidence: float):
+        """Сохранение информации о сырых сигналах"""
         try:
-            conn = sqlite3.connect(self.local_db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO processed_signals 
-                (signal_id, source, trader_id, symbol, direction, confidence, processed_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                signal.signal_id,
-                signal.source,
-                signal.trader_id,
-                signal.symbol,
-                signal.direction.value,
-                signal.confidence,
-                signal.processed_at
-            ))
-            
-            conn.commit()
-            conn.close()
-            
+            with sqlite3.connect(self.local_db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO signals_raw (trader_id, parser_used, raw_text, success, confidence, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (trader_id, parser_used, raw_text, success, confidence, json.dumps({
+                    'text_length': len(raw_text),
+                    'processed_at': datetime.now().isoformat()
+                })))
+                conn.commit()
         except Exception as e:
-            logger.error(f"Error saving signal to local DB: {e}")
+            logger.error(f"Error saving raw signal: {e}")
     
-    async def save_signal_supabase(self, signal: ParsedSignal) -> bool:
-        """Сохранение сигнала в Supabase"""
+    async def _save_parsed_signal(self, signal: ParsedSignal, parser_used: str):
+        """Сохранение обработанного сигнала"""
         try:
-            # Подготавливаем данные для сохранения
-            signal_data = {
-                'trader_id': signal.trader_id,
-                'symbol': signal.symbol,
-                'direction': signal.direction.value,
-                'entry_single': float(signal.entry_single) if signal.entry_single else None,
-                'entry_min': float(min(signal.entry_zone)) if signal.entry_zone else None,
-                'entry_max': float(max(signal.entry_zone)) if signal.entry_zone else None,
-                'tp1': float(signal.tp1) if signal.tp1 else None,
-                'tp2': float(signal.tp2) if signal.tp2 else None,
-                'tp3': float(signal.tp3) if signal.tp3 else None,
-                'tp4': float(signal.tp4) if signal.tp4 else None,
-                'stop_loss': float(signal.stop_loss) if signal.stop_loss else None,
-                'leverage': signal.leverage,
-                'confidence': float(signal.confidence),
-                'original_text': signal.raw_text,
-                'source': signal.source,
-                'timestamp': signal.timestamp.isoformat(),
-                'analysis_notes': signal.reason,
-                'targets': json.dumps(signal.targets) if signal.targets else None,
-                'entry_zone': json.dumps(signal.entry_zone) if signal.entry_zone else None,
-                'signal_quality': self.get_signal_quality(signal.confidence),
-                'parser_used': getattr(signal, 'parser_used', None),
-                'processed_at': getattr(signal, 'processed_at', datetime.now()).isoformat()
-            }
-            
-            # Добавляем Telegram метаданные если есть
-            if hasattr(signal, 'telegram_message_id'):
-                signal_data['telegram_message_id'] = signal.telegram_message_id
-            if hasattr(signal, 'telegram_channel_id'):
-                signal_data['telegram_channel_id'] = signal.telegram_channel_id
-            if hasattr(signal, 'source_url'):
-                signal_data['source_url'] = signal.source_url
-            
-            # Сохраняем в Supabase
-            result = self.supabase.insert_trade(signal_data)
-            
-            if result:
-                # Обновляем локальную БД
-                conn = sqlite3.connect(self.local_db_path)
+            with sqlite3.connect(self.local_db_path) as conn:
                 cursor = conn.cursor()
-                
                 cursor.execute('''
-                    UPDATE processed_signals 
-                    SET saved_to_supabase = TRUE 
-                    WHERE signal_id = ?
-                ''', (signal.signal_id,))
-                
+                    INSERT OR REPLACE INTO signals_parsed 
+                    (signal_id, trader_id, parser_used, symbol, direction, entry_zone, targets, 
+                     stop_loss, leverage, confidence, is_valid, reason, raw_text)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    signal.signal_id,
+                    signal.trader_id,
+                    parser_used,
+                    signal.symbol,
+                    signal.direction.value,
+                    json.dumps(signal.entry_zone) if signal.entry_zone else None,
+                    json.dumps(signal.targets) if signal.targets else None,
+                    signal.stop_loss,
+                    signal.leverage,
+                    signal.confidence,
+                    signal.is_valid,
+                    signal.reason,
+                    signal.raw_text
+                ))
                 conn.commit()
-                conn.close()
-                
-                return True
-            else:
-                return False
-                
         except Exception as e:
-            logger.error(f"❌ Error saving signal to Supabase: {e}")
-            
-            # Сохраняем ошибку в локальную БД
-            try:
-                conn = sqlite3.connect(self.local_db_path)
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    UPDATE processed_signals 
-                    SET error_message = ? 
-                    WHERE signal_id = ?
-                ''', (str(e), signal.signal_id))
-                
-                conn.commit()
-                conn.close()
-            except:
-                pass
-            
-            return False
+            logger.error(f"Error saving parsed signal: {e}")
     
-    def get_signal_quality(self, confidence: float) -> str:
-        """Определение качества сигнала по уверенности"""
-        if confidence >= 85:
-            return 'excellent'
-        elif confidence >= 75:
-            return 'high'
-        elif confidence >= 60:
-            return 'medium'
-        elif confidence >= 40:
-            return 'low'
-        else:
-            return 'poor'
-    
-    async def batch_process_signals(self, signals_data: List[Dict]) -> List[ParsedSignal]:
-        """
-        Пакетная обработка сигналов
-        
-        Args:
-            signals_data: Список словарей с данными сигналов
-                         [{raw_text, source, trader_id}, ...]
-        
-        Returns:
-            Список обработанных сигналов
-        """
-        processed_signals = []
-        
-        for signal_data in signals_data:
-            try:
-                signal = await self.process_raw_signal(
-                    signal_data['raw_text'],
-                    signal_data.get('source', ''),
-                    signal_data['trader_id']
-                )
-                
-                if signal:
-                    processed_signals.append(signal)
-                    
-            except Exception as e:
-                logger.error(f"Error in batch processing: {e}")
-        
-        logger.info(f"📦 Batch processed {len(processed_signals)}/{len(signals_data)} signals")
-        
-        return processed_signals
-    
-    def get_stats(self) -> Dict:
-        """Получение статистики оркестратора"""
+    def get_stats(self) -> Dict[str, Any]:
+        """Получение статистики работы оркестратора"""
         uptime = datetime.now() - self.stats['started_at']
         
-        success_rate = 0.0
-        if self.stats['signals_processed'] > 0:
-            success_rate = (self.stats['signals_saved'] / self.stats['signals_processed']) * 100
-        
         return {
-            'uptime': str(uptime),
+            'total_parsers': len(self.parsers),
+            'available_parsers': list(self.parsers.keys()),
+            'cryptoattack24_available': CRYPTOATTACK24_AVAILABLE,
+            'uptime_seconds': int(uptime.total_seconds()),
             'signals_processed': self.stats['signals_processed'],
             'signals_saved': self.stats['signals_saved'],
             'signals_failed': self.stats['signals_failed'],
-            'success_rate': round(success_rate, 2),
-            'parsers_used': self.stats['parsers_used'],
+            'success_rate': (self.stats['signals_saved'] / max(self.stats['signals_processed'], 1)) * 100,
+            'parsers_usage': self.stats['parsers_used'],
             'started_at': self.stats['started_at'].isoformat()
         }
     
-    def print_stats(self):
-        """Вывод статистики в лог"""
-        stats = self.get_stats()
+    def get_parser_for_trader(self, trader_id: str) -> Optional[str]:
+        """Получение рекомендуемого парсера для трейдера"""
+        if trader_id in self.parsers:
+            return trader_id
         
-        logger.info("📊 SIGNAL ORCHESTRATOR STATISTICS:")
-        logger.info(f"   Uptime: {stats['uptime']}")
-        logger.info(f"   Signals processed: {stats['signals_processed']}")
-        logger.info(f"   Signals saved: {stats['signals_saved']}")
-        logger.info(f"   Signals failed: {stats['signals_failed']}")
-        logger.info(f"   Success rate: {stats['success_rate']}%")
-        logger.info(f"   Parsers usage: {stats['parsers_used']}")
-
-# Функция для тестирования
-async def test_orchestrator():
-    """Тестирование оркестратора"""
-    orchestrator = SignalOrchestrator()
+        # Поиск по алиасам
+        aliases = {
+            'whales_guide': 'whales_guide_main',
+            'whalesguide': 'whales_guide_main',
+            '2trade': '2trade_premium',
+            'slivaem': 'slivaeminfo',
+            'crypto_hub': 'crypto_hub_vip',
+            'cryptohub': 'crypto_hub_vip',
+            'cryptoattack': 'cryptoattack24'
+        }
+        
+        for alias, real_name in aliases.items():
+            if alias in trader_id.lower():
+                return real_name
+        
+        return None
     
-    # Тестовый сигнал Whales Crypto
-    test_signal = """
-    Longing #SWARMS Here
+    async def test_all_parsers(self, test_signals: Dict[str, str]) -> Dict[str, Any]:
+        """Тестирование всех парсеров с тестовыми сигналами"""
+        results = {}
+        
+        for parser_name, parser in self.parsers.items():
+            results[parser_name] = {
+                'can_parse': {},
+                'parse_results': {},
+                'success_count': 0,
+                'total_tests': 0
+            }
+            
+            for signal_name, signal_text in test_signals.items():
+                results[parser_name]['total_tests'] += 1
+                
+                # Тест can_parse
+                can_parse = parser.can_parse(signal_text)
+                results[parser_name]['can_parse'][signal_name] = can_parse
+                
+                if can_parse:
+                    # Тест parse_signal
+                    try:
+                        parsed = parser.parse_signal(signal_text, f"test_{parser_name}")
+                        if parsed and parsed.is_valid:
+                            results[parser_name]['parse_results'][signal_name] = {
+                                'success': True,
+                                'symbol': parsed.symbol,
+                                'direction': parsed.direction.value,
+                                'confidence': parsed.confidence
+                            }
+                            results[parser_name]['success_count'] += 1
+                        else:
+                            results[parser_name]['parse_results'][signal_name] = {
+                                'success': False,
+                                'error': 'Invalid or failed parsing'
+                            }
+                    except Exception as e:
+                        results[parser_name]['parse_results'][signal_name] = {
+                            'success': False,
+                            'error': str(e)
+                        }
+                else:
+                    results[parser_name]['parse_results'][signal_name] = {
+                        'success': False,
+                        'error': 'Parser cannot handle this signal'
+                    }
+            
+            # Рассчитываем успешность
+            results[parser_name]['success_rate'] = (
+                results[parser_name]['success_count'] / max(results[parser_name]['total_tests'], 1)
+            ) * 100
+        
+        return results
 
-    Long (5x - 10x)
 
-    Entry: $0.02569 - $0.02400
+# Глобальный экземпляр для использования в других модулях
+_orchestrator_instance = None
 
-    Reason: Chart looks bullish for it. Worth buying for short-mid term quick profits too.
-
-    Targets: $0.027, $0.028, $0.029, $0.03050, $0.032, $0.034, $0.036, $0.03859
-
-    Stoploss: $0.02260
-    """
-    
-    logger.info("🧪 Testing Signal Orchestrator")
-    
-    # Обрабатываем сигнал
-    result = await orchestrator.process_raw_signal(
-        test_signal, 
-        'whales_crypto', 
-        'test_trader'
-    )
-    
-    if result:
-        logger.info(f"✅ Test successful: {result.symbol} {result.direction.value}")
-    else:
-        logger.error("❌ Test failed")
-    
-    # Выводим статистику
-    orchestrator.print_stats()
-
-if __name__ == "__main__":
-    asyncio.run(test_orchestrator())
+def get_signal_orchestrator() -> SignalOrchestrator:
+    """Получение глобального экземпляра оркестратора"""
+    global _orchestrator_instance
+    if _orchestrator_instance is None:
+        _orchestrator_instance = SignalOrchestrator()
+    return _orchestrator_instance

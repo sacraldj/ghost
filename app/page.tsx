@@ -1,21 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import dynamic from 'next/dynamic'
 
-// Импортируем новый точный дизайн как на скрине
+// Импортируем точный дизайн с левой панелью
 const GhostLayoutExact = dynamic(() => import('@/components/GhostLayoutExact'), {
   ssr: false,
   loading: () => <div className="min-h-screen bg-black animate-pulse" />
 })
 
-const TradersAnalyticsDashboard = dynamic(() => import('@/components/TradersAnalyticsDashboard'), { 
+// Импортируем исправленный TradersDashboard
+const TradersDashboard = dynamic(() => import('@/components/TradersDashboard'), { 
   ssr: false,
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
 })
 
-// Все компоненты из старого дашборда
+// Другие компоненты для разных секций
 const TradingDashboard = dynamic(() => import('@/components/TradingDashboard'), { 
   ssr: false,
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
@@ -31,9 +31,9 @@ const SystemMonitor = dynamic(() => import('@/components/SystemMonitor'), {
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
 })
 
-const PortfolioSnapshot = dynamic(() => import('@/components/PortfolioSnapshot'), { 
+const NewsAnalysisDashboard = dynamic(() => import('@/components/NewsAnalysisDashboard'), { 
   ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
+  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
 })
 
 const NewsFeed = dynamic(() => import('@/components/NewsFeed'), { 
@@ -41,12 +41,7 @@ const NewsFeed = dynamic(() => import('@/components/NewsFeed'), {
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
 })
 
-const TraderObservation = dynamic(() => import('@/components/TraderObservation'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
-})
-
-const MarketAnalysisChart = dynamic(() => import('@/components/MarketAnalysisChart'), { 
+const NewsImpactCorrelation = dynamic(() => import('@/components/NewsImpactCorrelation'), { 
   ssr: false,
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
 })
@@ -55,26 +50,6 @@ const ChatInterface = dynamic(() => import('@/components/ChatInterface'), {
   ssr: false,
   loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
 })
-
-const RealtimeChart = dynamic(() => import('@/components/RealtimeChart'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
-})
-
-const NewsAnalysisDashboard = dynamic(() => import('@/components/NewsAnalysisDashboard'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const NewsAnalyticsTab = dynamic(() => import('@/components/NewsAnalyticsTab'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
-)
 
 export default function GhostDashboard() {
   const [activeSection, setActiveSection] = useState('traders')
@@ -85,95 +60,107 @@ export default function GhostDashboard() {
   }
 
   useEffect(() => {
-    // Имитируем загрузку
-    setTimeout(() => setLoading(false), 1000)
+    // Короткая загрузка
+    setTimeout(() => setLoading(false), 500)
   }, [])
 
   const renderSectionContent = () => {
     switch (activeSection) {
       case 'traders':
-        return <TradersAnalyticsDashboard />
+        return <TradersDashboard />
       
       case 'tasks':
         return (
-          <div className="space-y-8">
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📈 Live Trading</h3>
-                <TradingDashboard />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📈 Real-time Charts</h3>
-                <RealtimeChart />
-              </div>
-            </div>
+          <div className="space-y-8 p-6">
             <div>
-              <h3 className="text-xl font-bold text-white mb-4">💼 Portfolio Overview</h3>
-              <PortfolioSnapshot />
+              <h3 className="text-xl font-bold text-white mb-4">📈 Live Trading</h3>
+              <TradingDashboard />
             </div>
           </div>
         )
 
       case 'messages':
         return (
-          <div className="space-y-8">
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📱 Telegram Signals</h3>
-                <TelegramSignalsDashboard />
-              </div>
-              <div>
-              <h3 className="text-xl font-bold text-white mb-4">🤖 AI Assistant</h3>
-              <ChatInterface />
+          <div className="space-y-8 p-6">
+            <div>
+              <h3 className="text-xl font-bold text-white mb-4">📱 Telegram Signals</h3>
+              <TelegramSignalsDashboard />
             </div>
           </div>
         )
 
       case 'goals':
-        return <NewsAnalyticsTab />
+        return (
+          <div className="space-y-6 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-bold text-white">📰 News & AI Analysis</h1>
+              <div className="text-sm text-gray-400">
+                Real-time market intelligence
+              </div>
+            </div>
+            
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Лента новостей */}
+              <div>
+                <h3 className="text-xl font-bold text-white mb-4">📰 Critical News Feed</h3>
+                <NewsFeed />
+              </div>
+              
+              {/* AI Chat */}
+              <div>
+                <h3 className="text-xl font-bold text-white mb-4">🤖 AI Assistant</h3>
+                <ChatInterface />
+              </div>
+            </div>
+            
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Анализ новостей */}
+              <div>
+                <h3 className="text-xl font-bold text-white mb-4">📊 News Analysis</h3>
+                <NewsAnalysisDashboard />
+              </div>
+              
+              {/* Корреляция новостей с ценами */}
+              <div>
+                <h3 className="text-xl font-bold text-white mb-4">📈 Price Impact Correlation</h3>
+                <NewsImpactCorrelation />
+              </div>
+            </div>
+          </div>
+        )
       
       case 'groups':
         return (
-          <div className="space-y-8">
+          <div className="space-y-8 p-6">
             <div>
-              <h3 className="text-xl font-bold text-white mb-4">📊 Live Trading Dashboard</h3>
+              <h3 className="text-xl font-bold text-white mb-4">👥 Trading Groups</h3>
               <TradingDashboard />
-            </div>
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📈 Real-time Charts</h3>
-                <RealtimeChart />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📊 Market Analysis</h3>
-                <MarketAnalysisChart />
-              </div>
             </div>
           </div>
         )
 
       case 'settings':
         return (
-          <div className="space-y-8">
+          <div className="space-y-8 p-6">
             <div>
               <h3 className="text-xl font-bold text-white mb-4">⚙️ System Monitor</h3>
               <SystemMonitor />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">💼 Portfolio Snapshot</h3>
-              <PortfolioSnapshot />
             </div>
           </div>
         )
 
       default:
-        return <TradersAnalyticsDashboard />
+        return <TradersDashboard />
     }
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div>
+          <div className="text-yellow-500 font-bold">Loading GHOST Dashboard...</div>
+        </div>
       </div>
     )
   }
@@ -183,7 +170,7 @@ export default function GhostDashboard() {
       currentPage={activeSection as any}
       onPageChange={handlePageChange}
     >
-          {renderSectionContent()}
+      {renderSectionContent()}
     </GhostLayoutExact>
   )
 }

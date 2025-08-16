@@ -26,20 +26,20 @@ export default function RealtimeChart() {
   const [candleData, setCandleData] = useState<CandleData[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [useMockData, setUseMockData] = useState(false)
+  const [useMockData, setUseMockData] = useState(false) // По умолчанию используем реальные API данные
   const wsRef = useRef<WebSocket | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const mockDataInterval = useRef<NodeJS.Timeout | null>(null)
 
   const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT']
 
-  // WebSocket подключение или моковые данные
+  // API подключение или моковые данные
   useEffect(() => {
-    // Сначала пробуем WebSocket, при ошибке переключаемся на моковые данные
-    if (!useMockData) {
-      connectWebSocket()
-    } else {
+    if (useMockData) {
       startMockData()
+    } else {
+      // Используем наш API для получения реальных данных
+      startApiData()
     }
     
     return () => {
@@ -115,12 +115,17 @@ export default function RealtimeChart() {
       }
 
       wsRef.current.onerror = (error: Event) => {
-        setError('WebSocket connection failed - using API polling')
+        setError('WebSocket connection failed - using mock data')
         setIsConnected(false)
-        console.error('WebSocket error:', 'Connection failed')
         
-        // Вместо моковых данных, используем API polling
-        startApiPolling()
+        // Переключаемся на mock данные без вывода ошибки в консоль
+        setUseMockData(true)
+        
+        // Закрываем WebSocket
+        if (wsRef.current) {
+          wsRef.current.close()
+          wsRef.current = null
+        }
       }
 
     } catch (err) {
@@ -313,6 +318,54 @@ export default function RealtimeChart() {
     }
   }
 
+  // Функция для работы с реальными API данными
+  const startApiData = async () => {
+    try {
+      console.log(`🚀 Starting real API data for ${selectedSymbol}`)
+      
+      // Сначала загружаем исторические данные
+      await loadHistoricalData()
+      
+      // Затем начинаем получать живые цены
+      const fetchLivePrices = async () => {
+        try {
+          const response = await fetch(`/api/prices/live?symbol=${selectedSymbol}`)
+          const data = await response.json()
+          
+          if (data.price) {
+            const newPriceData: PriceData = {
+              symbol: data.symbol,
+              price: data.price,
+              change24h: Math.random() * 10 - 5, // Временно, пока не получаем 24h change из API
+              volume: Math.random() * 1000000 + 100000,
+              timestamp: Date.now()
+            }
+            
+            setPriceData(newPriceData)
+            setIsConnected(true)
+            setError(null)
+            
+            console.log(`💹 Updated price for ${selectedSymbol}: $${data.price}`)
+          }
+        } catch (fetchError) {
+          console.warn('Failed to fetch live price:', fetchError)
+          setError('API connection issue - retrying...')
+        }
+      }
+      
+      // Первый запрос сразу
+      await fetchLivePrices()
+      
+      // Затем обновляем каждые 5 секунд
+      mockDataInterval.current = setInterval(fetchLivePrices, 5000)
+      
+    } catch (error) {
+      console.error('Failed to start API data:', error)
+      setError('API connection failed - switching to mock data')
+      setUseMockData(true)
+    }
+  }
+
   // Рисование графика на canvas
   useEffect(() => {
     if (candleData.length > 0 && canvasRef.current) {
@@ -480,15 +533,29 @@ export default function RealtimeChart() {
             )}
           </div>
           
-          <select
-            value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value)}
-            className="px-3 py-2 bg-gray-800 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {symbols.map(symbol => (
-              <option key={symbol} value={symbol}>{symbol}</option>
-            ))}
-          </select>
+          <div className="flex items-center space-x-3">
+            <select
+              value={selectedSymbol}
+              onChange={(e) => setSelectedSymbol(e.target.value)}
+              className="px-3 py-2 bg-gray-800 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {symbols.map(symbol => (
+                <option key={symbol} value={symbol}>{symbol}</option>
+              ))}
+            </select>
+            
+            <button
+              onClick={() => setUseMockData(!useMockData)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                useMockData 
+                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+              title={useMockData ? 'Using mock data - click to use real API' : 'Using real Bybit API - click to use mock data'}
+            >
+              {useMockData ? '🎭 Mock' : '🚀 API'}
+            </button>
+          </div>
         </div>
 
         {priceData && (

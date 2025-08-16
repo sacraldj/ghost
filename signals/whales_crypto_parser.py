@@ -1,6 +1,6 @@
 """
 GHOST Whales Crypto Guide Parser
-Парсер для сигналов канала @Whalesguide
+Специализированный парсер для канала @Whalesguide
 """
 
 import re
@@ -12,7 +12,7 @@ from signals.signal_parser_base import SignalParserBase, ParsedSignal, SignalDir
 logger = logging.getLogger(__name__)
 
 class WhalesCryptoParser(SignalParserBase):
-    """Парсер для сигналов канала Whales Crypto Guide"""
+    """Специализированный парсер для канала Whales Crypto Guide"""
     
     def __init__(self):
         super().__init__("whales_crypto_guide")
@@ -48,13 +48,10 @@ class WhalesCryptoParser(SignalParserBase):
                 matched_patterns += 1
         
         # Проверяем специфичные ключевые слова
-        keyword_matches = 0
-        for keyword in self.whales_keywords:
-            if keyword.lower() in text_clean:
-                keyword_matches += 1
+        keyword_matches = sum(1 for keyword in self.whales_keywords if keyword in text_clean)
         
-        # Должно быть минимум 3 паттерна из 6 ИЛИ 2 паттерна + ключевые слова
-        return matched_patterns >= 3 or (matched_patterns >= 2 and keyword_matches >= 1)
+        # Если найдено 2+ паттернов или 1+ ключевых слов
+        return matched_patterns >= 2 or keyword_matches >= 1
     
     def parse_signal(self, text: str, trader_id: str) -> Optional[ParsedSignal]:
         """Основная функция парсинга сигнала Whales Crypto"""
@@ -65,12 +62,12 @@ class WhalesCryptoParser(SignalParserBase):
             # Извлекаем основные компоненты
             symbol = self.extract_symbol_whales(text_clean)
             if not symbol:
-                self.logger.warning("Could not extract symbol from Whales Crypto text")
+                self.logger.warning("Could not extract symbol from Whales text")
                 return None
             
             direction = self.extract_direction_whales(text_clean)
             if not direction:
-                self.logger.warning("Could not extract direction from Whales Crypto text")
+                self.logger.warning("Could not extract direction from Whales text")
                 return None
             
             # Создаем объект сигнала
@@ -93,208 +90,189 @@ class WhalesCryptoParser(SignalParserBase):
             
             # Заполняем отдельные TP поля
             if signal.targets:
-                if len(signal.targets) >= 1:
-                    signal.tp1 = signal.targets[0]
-                if len(signal.targets) >= 2:
-                    signal.tp2 = signal.targets[1]
-                if len(signal.targets) >= 3:
-                    signal.tp3 = signal.targets[2]
-                if len(signal.targets) >= 4:
-                    signal.tp4 = signal.targets[3]
+                signal.tp1 = signal.targets[0] if len(signal.targets) > 0 else None
+                signal.tp2 = signal.targets[1] if len(signal.targets) > 1 else None
+                signal.tp3 = signal.targets[2] if len(signal.targets) > 2 else None
+                signal.tp4 = signal.targets[3] if len(signal.targets) > 3 else None
             
-            # Устанавливаем single entry как среднюю зоны входа
-            if signal.entry_zone:
-                signal.entry_single = sum(signal.entry_zone) / len(signal.entry_zone)
+            # Рассчитываем уверенность
+            signal.confidence = self.calculate_confidence_whales(signal, text_clean)
             
             # Валидация
-            self.validate_signal(signal)
-            
-            # Расчет уверенности
-            signal.confidence = calculate_confidence(signal)
-            
-            # Дополнительная уверенность для качественных сигналов Whales Crypto
-            if signal.reason and len(signal.reason) > 20:
-                signal.confidence += 5.0
-            
-            if signal.targets and len(signal.targets) >= 4:
-                signal.confidence += 5.0
-            
-            signal.confidence = min(100.0, signal.confidence)
-            
-            self.logger.info(f"Parsed Whales Crypto signal: {symbol} {direction.value} (confidence: {signal.confidence:.1f}%)")
+            signal.is_valid = self.validate_whales_signal(signal)
             
             return signal
             
         except Exception as e:
-            self.logger.error(f"Error parsing Whales Crypto signal: {e}")
+            self.logger.error(f"Error parsing Whales signal: {e}")
             return None
     
     def extract_symbol_whales(self, text: str) -> Optional[str]:
-        """Извлечение символа для Whales Crypto"""
-        # Ищем "#SWARMS", "#BTC", etc.
-        pattern = r'#([A-Z]{2,15})'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение символа из формата Whales"""
+        # Паттерны для Whales формата
+        patterns = [
+            r'Longing\s+#([A-Z]{2,10})',  # Longing #SWARMS
+            r'Buying\s+#([A-Z]{2,10})',   # Buying #ETH
+            r'#([A-Z]{2,10})\s+Here',     # #SUI Here
+            r'#([A-Z]{2,10}USDT?)',       # #BTCUSDT
+            r'([A-Z]{2,10})/USDT',        # BTC/USDT
+        ]
         
-        if match:
-            symbol = match.group(1).upper()
-            # Нормализуем некоторые специфичные символы
-            symbol_mapping = {
-                'SWARMS': 'SWARMS',
-                'BTC': 'BTC',
-                'ETH': 'ETH',
-                'SOL': 'SOL',
-                'DOGE': 'DOGE'
-            }
-            return symbol_mapping.get(symbol, symbol)
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                symbol = match.group(1).upper()
+                # Нормализуем символ
+                if symbol.endswith('USDT'):
+                    symbol = symbol[:-4]
+                elif symbol.endswith('USD'):
+                    symbol = symbol[:-3]
+                return symbol
         
-        # Fallback на базовый метод
-        return self.extract_symbol(text)
+        return None
     
     def extract_direction_whales(self, text: str) -> Optional[SignalDirection]:
-        """Извлечение направления для Whales Crypto"""
+        """Извлечение направления из формата Whales"""
         text_lower = text.lower()
         
-        # Специфичные паттерны Whales Crypto
-        if 'longing' in text_lower:
-            return SignalDirection.LONG
-        elif 'shorting' in text_lower:
-            return SignalDirection.SHORT
-        elif 'long (' in text_lower:
-            return SignalDirection.LONG
-        elif 'short (' in text_lower:
-            return SignalDirection.SHORT
+        # Whales специфичные паттерны
+        if any(word in text_lower for word in ['longing', 'long', 'buying', 'buy']):
+            return SignalDirection.BUY
+        elif any(word in text_lower for word in ['shorting', 'short', 'selling', 'sell']):
+            return SignalDirection.SELL
         
-        # Fallback на базовый метод
-        return self.extract_direction(text)
-    
-    def extract_leverage_whales(self, text: str) -> Optional[str]:
-        """Извлечение плеча для Whales Crypto"""
-        # Ищем паттерн "Long (5x - 10x)"
-        pattern = r'(?:Long|Short)\s*\(([^)]+)\)'
-        match = re.search(pattern, text, re.IGNORECASE)
-        
-        if match:
-            leverage_text = match.group(1).strip()
-            return leverage_text
-        
-        return self.extract_leverage(text)
+        return None
     
     def extract_entry_zone_whales(self, text: str) -> List[float]:
-        """Извлечение зоны входа для Whales Crypto"""
-        # Ищем "Entry: $0.02569 - $0.02400"
-        pattern = r'Entry:\s*\$?([0-9]*\.?[0-9]+)\s*-\s*\$?([0-9]*\.?[0-9]+)'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение зоны входа из формата Whales"""
+        entry_zone = []
         
-        if match:
-            try:
-                price1 = float(match.group(1))
-                price2 = float(match.group(2))
-                return sorted([price1, price2])
-            except ValueError:
-                pass
+        # Паттерны для входа Whales
+        patterns = [
+            r'Entry:\s*\$([0-9\.]+)\s*-\s*\$([0-9\.]+)',  # Entry: $0.02569 - $0.02400
+            r'Entry:\s*([0-9\.]+)\s*-\s*([0-9\.]+)',      # Entry: 2800-2850
+            r'Entry:\s*\$?([0-9\.]+)',                    # Entry: $45000
+        ]
         
-        # Fallback на базовый метод
-        return self.extract_entry_zone(text)
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 2:  # Диапазон
+                    entry_zone.extend([float(match.group(1)), float(match.group(2))])
+                else:  # Одиночная цена
+                    entry_zone.append(float(match.group(1)))
+                break
+        
+        return entry_zone
     
     def extract_targets_whales(self, text: str) -> List[float]:
-        """Извлечение целей для Whales Crypto"""
+        """Извлечение целей из формата Whales"""
         targets = []
         
-        # Ищем "Targets: $0.027, $0.028, $0.029, $0.03050, $0.032, $0.034, $0.036, $0.03859"
-        pattern = r'Targets:\s*((?:\$?[0-9]*\.?[0-9]+[,\s]*)+)'
-        match = re.search(pattern, text, re.IGNORECASE)
-        
-        if match:
-            targets_text = match.group(1)
-            # Извлекаем все числа
-            price_matches = re.findall(r'\$?([0-9]*\.?[0-9]+)', targets_text)
+        # Паттерн для целей Whales
+        targets_match = re.search(r'Targets:\s*(.+)', text, re.IGNORECASE)
+        if targets_match:
+            targets_text = targets_match.group(1)
             
+            # Извлекаем все числа из строки целей
+            price_matches = re.findall(r'\$?([0-9]+\.?[0-9]*)', targets_text)
             for price_str in price_matches:
                 try:
                     price = float(price_str)
-                    if price > 0:
-                        targets.append(price)
+                    targets.append(price)
                 except ValueError:
                     continue
-        
-        # Если не нашли через Targets:, ищем отдельные TP
-        if not targets:
-            targets = self.extract_targets(text)
         
         return targets
     
     def extract_stop_loss_whales(self, text: str) -> Optional[float]:
-        """Извлечение стоп-лосса для Whales Crypto"""
-        # Ищем "Stoploss: $0.02260"
-        pattern = r'Stoploss:\s*\$?([0-9]*\.?[0-9]+)'
-        match = re.search(pattern, text, re.IGNORECASE)
+        """Извлечение стоп-лосса из формата Whales"""
+        patterns = [
+            r'Stoploss:\s*\$([0-9\.]+)',  # Stoploss: $0.02260
+            r'Stop\s*Loss:\s*\$?([0-9\.]+)',  # Stop Loss: 43000
+            r'SL:\s*\$?([0-9\.]+)',       # SL: 2750
+        ]
         
-        if match:
-            try:
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
                 return float(match.group(1))
-            except ValueError:
-                pass
         
-        # Fallback на базовый метод
-        return self.extract_stop_loss(text)
+        return None
+    
+    def extract_leverage_whales(self, text: str) -> Optional[str]:
+        """Извлечение плеча из формата Whales"""
+        patterns = [
+            r'Long\s*\(([0-9x\s\-]+)\)',  # Long (5x - 10x)
+            r'([0-9]+)x\s+leverage',      # 4x leverage
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                leverage_text = match.group(1)
+                # Извлекаем максимальное значение плеча
+                numbers = re.findall(r'([0-9]+)', leverage_text)
+                if numbers:
+                    max_leverage = max(int(num) for num in numbers)
+                    return f"{max_leverage}x"
+        
+        return None
     
     def extract_reason_whales(self, text: str) -> Optional[str]:
-        """Извлечение обоснования для Whales Crypto"""
-        # Ищем "Reason: ..."
-        pattern = r'Reason:\s*(.+?)(?:\n|Targets|Target|Entry|Stoploss|$)'
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        """Извлечение обоснования из формата Whales"""
+        reason_match = re.search(r'Reason:\s*(.+)', text, re.IGNORECASE)
+        if reason_match:
+            return reason_match.group(1).strip()
         
-        if match:
-            reason = match.group(1).strip()
-            # Очищаем от лишних символов
-            reason = re.sub(r'\s+', ' ', reason)
-            return reason
+        return None
+    
+    def calculate_confidence_whales(self, signal: ParsedSignal, text: str) -> float:
+        """Расчет уверенности для Whales сигнала"""
+        confidence = 0.5  # Базовая уверенность
         
-        # Fallback на базовый метод
-        return self.extract_reason(text)
-
-# Функция для тестирования парсера
-def test_whales_crypto_parser():
-    """Тестирование парсера на примере сигнала SWARMS"""
-    sample_signal = """
-    Longing #SWARMS Here
-
-    Long (5x - 10x)
-
-    Entry: $0.02569 - $0.02400
-
-    Reason: Chart looks bullish for it. Worth buying for short-mid term quick profits too.
-
-    Targets: $0.027, $0.028, $0.029, $0.03050, $0.032, $0.034, $0.036, $0.03859
-
-    Stoploss: $0.02260
-    """
-    
-    parser = WhalesCryptoParser()
-    
-    print("🧪 Testing Whales Crypto Parser")
-    print(f"Can parse: {parser.can_parse(sample_signal)}")
-    
-    if parser.can_parse(sample_signal):
-        signal = parser.parse_signal(sample_signal, "whales_crypto_guide")
+        # Бонусы за наличие компонентов
+        if signal.entry_zone:
+            confidence += 0.2
+        if signal.targets and len(signal.targets) >= 2:
+            confidence += 0.2
+        if signal.stop_loss:
+            confidence += 0.15
+        if signal.leverage:
+            confidence += 0.1
+        if signal.reason:
+            confidence += 0.1
         
-        if signal:
-            print(f"✅ Parsed successfully!")
-            print(f"Symbol: {signal.symbol}")
-            print(f"Direction: {signal.direction.value}")
-            print(f"Leverage: {signal.leverage}")
-            print(f"Entry Zone: {signal.entry_zone}")
-            print(f"Targets ({len(signal.targets)}): {signal.targets}")
-            print(f"Stop Loss: {signal.stop_loss}")
-            print(f"Reason: {signal.reason}")
-            print(f"Confidence: {signal.confidence:.1f}%")
-            print(f"Valid: {signal.is_valid}")
-            if signal.parse_errors:
-                print(f"Errors: {signal.parse_errors}")
-        else:
-            print("❌ Failed to parse")
+        # Проверка логичности цен
+        if signal.entry_zone and signal.targets:
+            avg_entry = sum(signal.entry_zone) / len(signal.entry_zone)
+            if signal.direction == SignalDirection.BUY:
+                if all(target > avg_entry for target in signal.targets):
+                    confidence += 0.1
+            else:
+                if all(target < avg_entry for target in signal.targets):
+                    confidence += 0.1
+        
+        return min(confidence, 1.0)
     
-    return parser
-
-if __name__ == "__main__":
-    test_whales_crypto_parser()
+    def validate_whales_signal(self, signal: ParsedSignal) -> bool:
+        """Валидация Whales сигнала"""
+        # Обязательные поля
+        if not all([signal.symbol, signal.direction]):
+            return False
+        
+        # Должна быть хотя бы цена входа или цели
+        if not signal.entry_zone and not signal.targets:
+            return False
+        
+        # Проверка логичности цен
+        if signal.entry_zone and signal.stop_loss:
+            avg_entry = sum(signal.entry_zone) / len(signal.entry_zone)
+            if signal.direction == SignalDirection.BUY:
+                if signal.stop_loss >= avg_entry:  # SL должен быть ниже входа для LONG
+                    return False
+            else:
+                if signal.stop_loss <= avg_entry:  # SL должен быть выше входа для SHORT
+                    return False
+        
+        return True

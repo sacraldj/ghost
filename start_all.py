@@ -39,22 +39,87 @@ class UnifiedSystemManager:
         self.http_server = None
         
     async def start_live_system(self):
-        """Запуск live системы обработки сигналов"""
+        """Запуск live системы обработки сигналов с новым оркестратором Supabase"""
         try:
-            logger.info("🚀 Запуск GHOST Unified Live System...")
+            logger.info("🚀 Запуск GHOST Unified Live System с Supabase...")
             
-            # Импортируем и запускаем live систему
+            # Сначала пробуем новый оркестратор с Supabase
             try:
-                from scripts.start_live_system import LiveSystemOrchestrator
-                orchestrator = LiveSystemOrchestrator()
-                await orchestrator.start_system()
-            except ImportError as ie:
-                logger.warning(f"⚠️ Не удалось импортировать LiveSystemOrchestrator: {ie}")
-                logger.info("🔄 Запускаем альтернативную систему сбора данных...")
-                await self.start_alternative_data_collection()
+                from signals.signal_orchestrator_with_supabase import orchestrator_with_supabase
+                logger.info("✅ Запускаем SignalOrchestratorWithSupabase...")
+                
+                # Тестируем подключение к Supabase
+                if await orchestrator_with_supabase.test_supabase_connection():
+                    logger.info("✅ Supabase подключение успешно!")
+                    
+                    # Запускаем обработку тестового сигнала
+                    test_signal = "🚀🔥 #ALPINE запампили на +57% со вчерашнего вечера"
+                    result = await orchestrator_with_supabase.process_raw_signal(test_signal, "cryptoattack24", "cryptoattack24")
+                    
+                    if result:
+                        logger.info(f"✅ Тестовый сигнал обработан: {result.symbol}")
+                    
+                    # Статистика оркестратора
+                    stats = await orchestrator_with_supabase.get_stats()
+                    logger.info(f"📊 Статистика оркестратора: {stats['signals_processed']} обработано, {stats['supabase_saves']} сохранено")
+                    
+                    # Запускаем основную систему
+                    await self.run_supabase_orchestrator_loop(orchestrator_with_supabase)
+                else:
+                    logger.warning("⚠️ Supabase недоступен, переходим к альтернативной системе...")
+                    raise Exception("Supabase connection failed")
+                    
+            except Exception as se:
+                logger.warning(f"⚠️ Ошибка с SignalOrchestratorWithSupabase: {se}")
+                
+                # Пробуем старую систему
+                try:
+                    from scripts.start_live_system import LiveSystemOrchestrator
+                    orchestrator = LiveSystemOrchestrator()
+                    await orchestrator.start_system()
+                except ImportError as ie:
+                    logger.warning(f"⚠️ Не удалось импортировать LiveSystemOrchestrator: {ie}")
+                    logger.info("🔄 Запускаем альтернативную систему сбора данных...")
+                    await self.start_alternative_data_collection()
             
         except Exception as e:
             logger.error(f"❌ Ошибка в Live System: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    async def run_supabase_orchestrator_loop(self, orchestrator):
+        """Запуск основного цикла оркестратора с Supabase"""
+        try:
+            logger.info("✅ Запуск основного цикла SignalOrchestratorWithSupabase...")
+            
+            # Цикл обработки сигналов
+            while self.running:
+                try:
+                    # Проверяем состояние системы
+                    stats = await orchestrator.get_stats()
+                    
+                    if stats['signals_processed'] % 10 == 0 and stats['signals_processed'] > 0:
+                        logger.info(
+                            f"📊 Статистика: {stats['signals_processed']} обработано, "
+                            f"{stats['supabase_saves']} сохранено, "
+                            f"{stats['success_rate']:.1f}% успешность"
+                        )
+                    
+                    # Система работает с реальными Telegram каналами через парсеры
+                    # Данные поступают автоматически из каналов и сохраняются в Supabase
+                    
+                    # Ожидание 60 секунд перед следующей проверкой статистики
+                    await asyncio.sleep(60)
+                    
+                except asyncio.CancelledError:
+                    logger.info("🛑 Оркестратор остановлен...")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ Ошибка в цикле оркестратора: {e}")
+                    await asyncio.sleep(10)  # Короткая пауза при ошибке
+                    
+        except Exception as e:
+            logger.error(f"❌ Критическая ошибка в цикле оркестратора: {e}")
             import traceback
             logger.error(traceback.format_exc())
     
@@ -94,6 +159,7 @@ class UnifiedSystemManager:
                             "status": "healthy",
                             "system": "GHOST Unified Live System",
                             "components": [
+                                "SignalOrchestratorWithSupabase",
                                 "UnifiedSignalParser",
                                 "LiveSignalProcessor", 
                                 "ChannelManager",
@@ -120,6 +186,7 @@ class UnifiedSystemManager:
                             <p><strong>Status:</strong> Running</p>
                             <p><strong>Components:</strong></p>
                             <ul>
+                                <li>⚡ SignalOrchestratorWithSupabase - Основной оркестратор с полной интеграцией Supabase</li>
                                 <li>📊 UnifiedSignalParser - Multi-format signal parsing</li>
                                 <li>🔄 LiveSignalProcessor - Real-time processing</li>
                                 <li>📡 ChannelManager - Source management</li>

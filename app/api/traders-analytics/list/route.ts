@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || '180d'
     const tradingOnly = searchParams.get('trading_only') === 'true'
+    const strategy = searchParams.get('strategy') || 'tp2_sl_be'
 
     // Определяем временной период
     const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : period === '60d' ? 60 : period === '90d' ? 90 : period === '180d' ? 180 : 30
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
       traderFilter = { ...traderFilter, is_trading: true }
     }
 
-    // Получаем данные трейдеров
+    // Получаем ТОЛЬКО реальных трейдеров из базы
     const { data: traders, error: tradersError } = await supabase
       .from('trader_registry')
       .select('*')
@@ -32,52 +33,36 @@ export async function GET(request: NextRequest) {
 
     if (tradersError) {
       console.error('Error fetching traders:', tradersError)
-    }
-
-    // Если нет трейдеров в базе, создаем моковые данные для демонстрации
-    if (!traders || traders.length === 0) {
-      const mockTraders = [
-        { trader_id: '2trade_slivaem', name: '2Trade', is_trading: true },
-        { trader_id: 'whales_guide_main', name: 'Whales Guide', is_trading: false },
-        { trader_id: 'crypto_hub_vip', name: 'Crypto Hub VIP', is_trading: true },
-        { trader_id: 'coinpulse_signals', name: 'CoinPulse', is_trading: false }
-      ]
-      
-      const tradersWithStats = mockTraders.map((trader, index) => ({
-        trader_id: trader.trader_id,
-        name: trader.name,
-        trades: 189 - (index * 10),
-        winrate: 63.8 - (index * 2),
-        roi_avg: 18.3 - (index * 1.5),
-        roi_year: 183 - (index * 15),
-        pnl_usdt: 1243.55 - (index * 200),
-        max_dd: 4.12,
-        tp1_rate: 87,
-        tp2_rate: 45,
-        sl_rate: 13,
-        avg_duration: "3h 42m",
-        trust: 87 - (index * 5),
-        trend: index % 2 === 0 ? 'up' : 'down' as 'up' | 'down' | 'neutral',
-        status: 'active' as 'active' | 'inactive' | 'stopped',
-        is_trading: trader.is_trading,
-        last_signal: "2025-08-15"
-      }))
-
       return NextResponse.json({
-        traders: tradersWithStats,
-        total: tradersWithStats.length
+        traders: [],
+        total: 0,
+        strategy: strategy,
+        period: period,
+        error: 'Database error'
       })
     }
 
-    // Для каждого трейдера рассчитываем статистику
+    // Если нет трейдеров в базе, возвращаем пустой список (только реальные данные!)
+    if (!traders || traders.length === 0) {
+      return NextResponse.json({
+        traders: [],
+        total: 0,
+        strategy: strategy,
+        period: period,
+        message: "No real trader data available yet. System is collecting signals..."
+      })
+    }
+
+    // Для каждого трейдера рассчитываем РЕАЛЬНУЮ статистику
     const tradersWithStats = await Promise.all(
       traders.map(async (trader) => {
-        // Получаем сигналы трейдера за период
+        // Получаем РЕАЛЬНЫЕ сигналы трейдера за период
         const { data: signals, error: signalsError } = await supabase
           .from('signals_parsed')
           .select('*')
           .eq('trader_id', trader.trader_id)
-          .order('id', { ascending: false })
+          .gte('posted_at', startDate.toISOString())
+          .order('posted_at', { ascending: false })
 
         if (signalsError) {
           console.error(`Error fetching signals for trader ${trader.trader_id}:`, signalsError)
@@ -85,48 +70,66 @@ export async function GET(request: NextRequest) {
 
         const traderSignals = signals || []
         
-        // Используем моковые данные как на скрине
-        const totalTrades = 189
-        const winrate = 63.8
-        const avgROI = 18.3
-        const roiYear = 183
-        const totalPnL = 1243.55
+        // Получаем РЕАЛЬНЫЕ сырые сигналы для подсчета общего количества
+        const { data: rawSignals, error: rawSignalsError } = await supabase
+          .from('signals_raw')
+          .select('signal_id')
+          .eq('trader_id', trader.trader_id)
+          .gte('posted_at', startDate.toISOString())
 
-        // Дополнительные данные как на скрине
-        const maxDD = 4.12
-        const avgDuration = "3h 42m"
-        const lastSignal = "2025-08-15"
-        const status = 'active'
-        const trend = 'up'
+        if (rawSignalsError) {
+          console.error(`Error fetching raw signals for trader ${trader.trader_id}:`, rawSignalsError)
+        }
 
+        const totalRawSignals = rawSignals ? rawSignals.length : 0
+        const validSignals = traderSignals.filter(s => s.is_valid).length
+        
+        // Подсчет реальных результатов
+        const tpSignals = traderSignals.filter(s => s.tp1 || s.tp2)
+        const slSignals = traderSignals.filter(s => s.sl)
+        
+        const totalTrades = validSignals
+        const winrate = totalTrades > 0 ? Math.round((tpSignals.length / totalTrades) * 100 * 10) / 10 : 0
+        const tp1Rate = totalTrades > 0 ? Math.round((tpSignals.length / totalTrades) * 100) : 0
+        const slRate = totalTrades > 0 ? Math.round((slSignals.length / totalTrades) * 100) : 0
+        
+        // Последний сигнал
+        const lastSignalDate = traderSignals.length > 0 ? 
+          new Date(traderSignals[0].posted_at).toISOString().split('T')[0] : null
+        
         return {
           trader_id: trader.trader_id,
           name: trader.name || trader.trader_id,
           trades: totalTrades,
           winrate: winrate,
-          roi_avg: avgROI,
-          roi_year: roiYear,
-          pnl_usdt: totalPnL,
-          max_dd: maxDD,
-          tp1_rate: 87, // Как на скрине
-          tp2_rate: 45, 
-          sl_rate: 13,
-          avg_duration: avgDuration,
-          trust: 87,
-          trend: trend as 'up' | 'down' | 'neutral',
-          status: status as 'active' | 'inactive' | 'stopped',
+          roi_avg: 0, // Пока нет данных по ROI
+          roi_year: 0,
+          pnl_usdt: 0, // Пока нет данных по PnL
+          max_dd: 0,
+          tp1_rate: tp1Rate,
+          tp2_rate: 0, // Пока нет разделения TP1/TP2
+          sl_rate: slRate,
+          avg_duration: "N/A",
+          trust: Math.min(100, Math.max(0, Math.round((validSignals / Math.max(1, totalRawSignals)) * 100))),
+          trend: 'neutral' as 'up' | 'down' | 'neutral',
+          status: trader.is_active ? 'active' : 'inactive' as 'active' | 'inactive' | 'stopped',
           is_trading: trader.is_trading || false,
-          last_signal: lastSignal
+          last_signal: lastSignalDate,
+          start_date: trader.created_at ? new Date(trader.created_at).toISOString().split('T')[0] : "2025-08-15",
+          capital: 10000 // Фиксированный капитал для симуляции
         }
       })
     )
 
-    // Сортируем по P&L
-    const sortedTraders = tradersWithStats.sort((a, b) => b.pnl_usdt - a.pnl_usdt)
+    // Сортируем по количеству валидных сигналов
+    const sortedTraders = tradersWithStats.sort((a, b) => b.trades - a.trades)
 
     return NextResponse.json({
       traders: sortedTraders,
-      total: sortedTraders.length
+      total: sortedTraders.length,
+      strategy: strategy,
+      period: period,
+      data_source: "real"
     })
 
   } catch (error) {

@@ -1,42 +1,76 @@
-# Render.com deployment configuration for GHOST Unified Live System
+# Render.com configuration for GHOST Telegram Bridge
+# Конфигурация для развертывания на Render.com
+
 services:
-  # Unified Live Signal Processing System
-  - type: web
-    name: ghost-unified-live-system
+  # Telegram Bridge Service - основной сервис для получения сообщений
+  - type: worker
+    name: ghost-telegram-bridge
     env: python
-    repo: https://github.com/sacraldj/ghost.git
-    branch: main
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python3 start_all.py"
-    plan: free
+    startCommand: "python core/telegram_render_bridge.py"
+    plan: starter  # Можно изменить на standard или pro
+    
+    # Environment variables
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
-      - key: PORT
-        value: "8000"
-      # Supabase (обязательные)
-      - key: NEXT_PUBLIC_SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Telegram (для реальных сигналов)
       - key: TELEGRAM_API_ID
-        sync: false
+        sync: false  # Set manually in Render dashboard
       - key: TELEGRAM_API_HASH
-        sync: false
+        sync: false  # Set manually in Render dashboard
       - key: TELEGRAM_PHONE
+        sync: false  # Optional
+      - key: SUPABASE_URL
         sync: false
-      - key: TELEGRAM_SESSION_NAME
-        value: "ghost_render_session"
-      # AI Providers (опциональные, для fallback)
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: RENDER_WEBHOOK_URL
+        value: https://ghost-api.onrender.com/webhooks/telegram
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+      - key: LOG_LEVEL
+        value: INFO
+      - key: GHOST_NEWS_INTEGRATION_ENABLED
+        value: "true"
+    
+    # Health check
+    healthCheckPath: "/health"
+    
+  # API Service - для обработки webhook'ов и API
+  - type: web
+    name: ghost-api
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m uvicorn api.main:app --host 0.0.0.0 --port $PORT"
+    plan: starter
+    
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-      # News & Other APIs (опциональные)
       - key: NEWS_API_KEY
         sync: false
-      - key: BYBIT_API_KEY
-        sync: false
-      - key: BYBIT_API_SECRET
-        sync: false
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+    
+    # Routes
+    routes:
+      - type: redirect
+        source: /
+        destination: /docs
+      - type: rewrite
+        source: /api/*
+        destination: /*
+
+# Databases (если нужны)
+databases:
+  # Redis для кеширования (опционально)
+  - name: ghost-redis
+    databaseName: ghost_cache
+    user: ghost_user
+    plan: starter  # 25MB free

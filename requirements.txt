@@ -1,6 +1,10 @@
 # GHOST System Requirements
 # Основные зависимости для работы с Telegram и парсинга сигналов
 
+# FastAPI для Render API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
 # Telegram API
 telethon>=1.28.0
 
