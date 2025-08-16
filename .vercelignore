@@ -11,12 +11,15 @@ __pycache__/
 *.pyd
 .Python
 
-# Database files
+# Database files - все данные должны храниться в Supabase
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
+ghost_news.db*
+news_engine/ghost_news.db*
+news_engine/*.db*
 
 # Archives and backups
 *.tar.gz
