@@ -250,7 +250,7 @@ class SignalOrchestratorWithSupabase:
             signal_data = {
                 'trader_id': signal.trader_id,
                 'symbol': signal.symbol,
-                'side': str(signal.direction).upper() if hasattr(signal, 'direction') else 'UNKNOWN',
+                'side': signal.direction.value if hasattr(signal, 'direction') else 'UNKNOWN',
                 'entry_type': getattr(signal, 'entry_type', 'market'),
                 'entry': float(signal.entry_price) if hasattr(signal, 'entry_price') and signal.entry_price else None,
                 'range_low': float(min(signal.entry_zone)) if hasattr(signal, 'entry_zone') and signal.entry_zone else None,
@@ -272,8 +272,8 @@ class SignalOrchestratorWithSupabase:
                 'parse_version': 'v1.0',
                 'is_valid': True,
                 
-                # Генерируем уникальный checksum для Prisma схемы
-                'checksum': f"{signal.trader_id}_{signal.symbol}_{int(datetime.now().timestamp())}_{hash(raw_text) % 1000000}"
+                # Генерируем уникальный checksum для Prisma схемы (максимум 64 символа)
+                'checksum': f"{signal.trader_id[:10]}_{signal.symbol[:10]}_{int(datetime.now().timestamp())}_{abs(hash(raw_text)) % 100000}"
             }
             
             # Сохраняем в таблицу signals_parsed
