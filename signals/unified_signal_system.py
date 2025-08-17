@@ -18,7 +18,7 @@ import hashlib
 
 # Импорты наших компонентов
 from signals.trader_detector import TraderDetector, TraderStyle
-from signals.parser_factory import ParserFactory
+from signals.parsers.parser_factory import ParserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +174,7 @@ class UnifiedSignalParser:
         try:
             import sys
             import os
-            sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
-            from cryptoattack24_parser import CryptoAttack24Parser
+            from signals.parsers.cryptoattack24_parser import CryptoAttack24Parser
             self.cryptoattack24_parser = CryptoAttack24Parser()
             logger.info("✅ CryptoAttack24Parser loaded successfully")
         except ImportError as e:
@@ -706,7 +705,7 @@ Format: {{"symbol": "BTCUSDT", "side": "LONG", "entry": [45000], "targets": [470
             sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
             
             try:
-                from cryptoattack24_parser import CryptoAttack24Parser
+                from signals.parsers.cryptoattack24_parser import CryptoAttack24Parser
                 parser = CryptoAttack24Parser()
                 result = parser.parse_message(text)
                 

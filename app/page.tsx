@@ -1,176 +1,169 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 
-// Импортируем точный дизайн с левой панелью
-const GhostLayoutExact = dynamic(() => import('@/components/GhostLayoutExact'), {
-  ssr: false,
-  loading: () => <div className="min-h-screen bg-black animate-pulse" />
-})
+// Импортируем компоненты
+import GhostLayoutExact from '@/app/components/GhostLayoutExact'
+import TradersDashboard from '@/app/components/TradersDashboard'
+import TradersDashboardMobile from '@/app/components/TradersDashboardMobile'
 
-// Импортируем исправленный TradersDashboard
-const TradersDashboard = dynamic(() => import('@/components/TradersDashboard'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
-})
-
-// Другие компоненты для разных секций
-const TradingDashboard = dynamic(() => import('@/components/TradingDashboard'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
-})
-
-const TelegramSignalsDashboard = dynamic(() => import('@/components/TelegramSignalsDashboard'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const SystemMonitor = dynamic(() => import('@/components/SystemMonitor'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const NewsAnalysisDashboard = dynamic(() => import('@/components/NewsAnalysisDashboard'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const NewsFeed = dynamic(() => import('@/components/NewsFeed'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-const NewsImpactCorrelation = dynamic(() => import('@/components/NewsImpactCorrelation'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-96" />
-})
-
-const ChatInterface = dynamic(() => import('@/components/ChatInterface'), { 
-  ssr: false,
-  loading: () => <div className="p-6 animate-pulse bg-gray-900 h-64" />
-})
-
-export default function GhostDashboard() {
-  const [activeSection, setActiveSection] = useState('traders')
-  const [loading, setLoading] = useState(true)
-
-  const handlePageChange = (page: string) => {
-    setActiveSection(page)
-  }
+export default function GhostMainDashboard() {
+  const [isClient, setIsClient] = useState(false)
+  const [selectedPeriod, setSelectedPeriod] = useState('180d')
+  const router = useRouter()
 
   useEffect(() => {
-    // Короткая загрузка
-    setTimeout(() => setLoading(false), 500)
+    setIsClient(true)
   }, [])
 
-  const renderSectionContent = () => {
-    switch (activeSection) {
-      case 'traders':
-        return <TradersDashboard />
-      
-      case 'tasks':
-        return (
-          <div className="space-y-8 p-6">
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">📈 Live Trading</h3>
-              <TradingDashboard />
-            </div>
-          </div>
-        )
-
-      case 'messages':
-        return (
-          <div className="space-y-8 p-6">
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">📱 Telegram Signals</h3>
-              <TelegramSignalsDashboard />
-            </div>
-          </div>
-        )
-
-      case 'goals':
-        return (
-          <div className="space-y-6 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold text-white">📰 News & AI Analysis</h1>
-              <div className="text-sm text-gray-400">
-                Real-time market intelligence
-              </div>
-            </div>
-            
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Лента новостей */}
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📰 Critical News Feed</h3>
-                <NewsFeed />
-              </div>
-              
-              {/* AI Chat */}
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">🤖 AI Assistant</h3>
-                <ChatInterface />
-              </div>
-            </div>
-            
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Анализ новостей */}
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📊 News Analysis</h3>
-                <NewsAnalysisDashboard />
-              </div>
-              
-              {/* Корреляция новостей с ценами */}
-              <div>
-                <h3 className="text-xl font-bold text-white mb-4">📈 Price Impact Correlation</h3>
-                <NewsImpactCorrelation />
-              </div>
-            </div>
-          </div>
-        )
-      
-      case 'groups':
-        return (
-          <div className="space-y-8 p-6">
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">👥 Trading Groups</h3>
-              <TradingDashboard />
-            </div>
-          </div>
-        )
-
-      case 'settings':
-        return (
-          <div className="space-y-8 p-6">
-            <div>
-              <h3 className="text-xl font-bold text-white mb-4">⚙️ System Monitor</h3>
-              <SystemMonitor />
-            </div>
-          </div>
-        )
-
-      default:
-        return <TradersDashboard />
-    }
+  if (!isClient) {
+    return <div className="min-h-screen bg-black" />
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div>
-          <div className="text-yellow-500 font-bold">Loading GHOST Dashboard...</div>
-        </div>
-      </div>
-    )
+  // Функция для обработки клика по трейдеру
+  const handleTraderClick = (traderId: string) => {
+    router.push(`/trader/${traderId}`)
   }
+
+  const periods = [
+    { id: '7d', label: '7d' },
+    { id: '30d', label: '30d' },
+    { id: '60d', label: '60d' },
+    { id: '90d', label: '90d' },
+    { id: '180d', label: '180d' },
+  ]
 
   return (
-    <GhostLayoutExact 
-      currentPage={activeSection as any}
-      onPageChange={handlePageChange}
-    >
-      {renderSectionContent()}
+    <GhostLayoutExact currentPage="traders">
+      <div className="space-y-6">
+        {/* Enhanced Header Section with Mobile-First Design */}
+        <div className="bg-gradient-to-br from-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-4 sm:p-6 border border-gray-800/50 shadow-2xl">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+            {/* Left Section - Title and Filters */}
+            <div className="flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg">
+                    📊 СТАТИСТИКА ПО ТРЕЙДЕРАМ
+                  </div>
+                  <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-4 py-2 rounded-xl text-sm font-bold shadow-lg">
+                    🎯 ALL TRADERS
+                  </div>
+                </div>
+              </div>
+              
+              {/* Period Filter Buttons - Mobile Optimized */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {periods.map((period) => (
+                  <button 
+                    key={period.id}
+                    onClick={() => setSelectedPeriod(period.id)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      selectedPeriod === period.id
+                        ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-lg shadow-orange-500/25'
+                        : 'bg-gray-800/50 text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                    }`}
+                  >
+                    {period.label}
+                  </button>
+                ))}
+                <span className="hidden sm:inline-flex items-center px-4 py-2 text-gray-400 text-sm">
+                  Пользовательский ранг
+                </span>
+              </div>
+            </div>
+            
+            {/* Right Section - Statistics Cards - Mobile Responsive */}
+            <div className="lg:w-96">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                {/* Main P&L Stats */}
+                <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-700/30">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-gray-400 text-sm">Общий P&L (USD)</div>
+                    <div className="text-xs text-gray-500">Торговый объем</div>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <div className="text-red-400 text-xl sm:text-2xl font-bold">-2,969.00</div>
+                    <div className="text-white text-lg font-semibold">1.73M</div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Данные на {new Date().toLocaleDateString()} UTC
+                  </div>
+                </div>
+                
+                {/* Today's Stats */}
+                <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-700/30">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-gray-400 text-sm">P&L сегодня</div>
+                    <div className="text-gray-400 text-sm">P&L 7 дн.</div>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <div className="text-emerald-400 text-lg font-bold">+1.79</div>
+                    <div className="text-red-400 text-lg font-bold">-2.74</div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Обновлено в реальном времени
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Additional Metrics - Mobile Responsive Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+            {/* Orders Statistics */}
+            <div className="bg-gray-800/20 rounded-xl p-4 border border-gray-700/20">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-semibold">Статистика ордеров</h3>
+                <div className="text-xs text-gray-500">
+                  {new Date().toLocaleDateString()} UTC
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white mb-1">1544</div>
+                  <div className="text-xs text-gray-400">Закрытых ордеров</div>
+                  <div className="text-xs text-red-400 mt-1">Long P&L: -2,152.86</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white mb-1">45%</div>
+                  <div className="text-xs text-gray-400">Успешных сделок</div>
+                  <div className="text-xs text-red-400 mt-1">Short P&L: -816.14</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* P&L Chart Placeholder */}
+            <div className="bg-gray-800/20 rounded-xl p-4 border border-gray-700/20">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-semibold">График P&L</h3>
+                <div className="text-xs text-red-400">-2,498.75 USD</div>
+              </div>
+              
+              <div className="h-24 sm:h-32 bg-gray-900/50 rounded-lg relative overflow-hidden">
+                <div className="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-red-900/40 to-transparent"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-xs text-gray-500">Interactive Chart</div>
+                </div>
+                <div className="absolute bottom-2 left-2 text-xs text-gray-400">-744.39</div>
+                <div className="absolute bottom-2 right-2 text-xs text-gray-400">-2,977.58</div>
+                <div className="absolute top-2 right-2 text-xs text-emerald-400">+20.40 USD суточный</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Responsive Traders Dashboard */}
+        <div className="hidden lg:block">
+          <TradersDashboard onTraderClick={handleTraderClick} />
+        </div>
+        
+        <div className="lg:hidden">
+          <TradersDashboardMobile onTraderClick={handleTraderClick} />
+        </div>
+      </div>
     </GhostLayoutExact>
   )
 }

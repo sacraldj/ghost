@@ -19,16 +19,14 @@ from supabase import create_client, Client
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Импортируем специализированные парсеры для каждого канала
-from signals.whales_crypto_parser import WhalesCryptoParser
-from signals.parser_2trade import TwoTradeParser
-from signals.crypto_hub_parser import CryptoHubParser
-from signals.signal_parser_base import ParsedSignal
+from signals.parsers.whales_crypto_parser import WhalesCryptoParser
+from signals.parsers.parser_2trade import TwoTradeParser
+from signals.parsers.crypto_hub_parser import CryptoHubParser
+from signals.parsers.signal_parser_base import ParsedSignal
 
 # Импортируем CryptoAttack24 парсер
 try:
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'telegram_parsers'))
-    from cryptoattack24_parser import CryptoAttack24Parser
+    from signals.parsers.cryptoattack24_parser import CryptoAttack24Parser
     CRYPTOATTACK24_AVAILABLE = True
 except ImportError:
     CRYPTOATTACK24_AVAILABLE = False
@@ -81,7 +79,7 @@ class SignalOrchestratorWithSupabase:
                     return None
                 
                 def _convert_to_parsed_signal(self, ca24_signal, trader_id: str, raw_text: str) -> ParsedSignal:
-                    from signals.signal_parser_base import SignalDirection
+                    from signals.parsers.signal_parser_base import SignalDirection
                     
                     # Определяем направление на основе действия
                     direction = SignalDirection.BUY if ca24_signal.action in ["pump", "growth"] else SignalDirection.SELL
