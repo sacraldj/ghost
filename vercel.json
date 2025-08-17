@@ -4,11 +4,18 @@
     "NEXT_PUBLIC_API_URL": "https://ghost-api.onrender.com",
     "GHOST_NEWS_INTEGRATION_ENABLED": "true"
   },
-  "functions": {
-    "app/api/*/route.ts": {
-      "maxDuration": 30
+  "build": {
+    "env": {
+      "VERCEL_FORCE_NO_BUILD_CACHE": "1"
     }
   },
+  "functions": {
+    "app/api/*/route.ts": {
+      "maxDuration": 30,
+      "runtime": "nodejs18.x"
+    }
+  },
+  "public": true,
   "headers": [
     {
       "source": "/api/(.*)",
