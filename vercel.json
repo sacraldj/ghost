@@ -1,22 +1,29 @@
 {
   "version": 2,
+  "public": true,
   "env": {
     "NEXT_PUBLIC_API_URL": "https://ghost-api.onrender.com",
     "GHOST_NEWS_INTEGRATION_ENABLED": "true"
-  },
-  "build": {
-    "env": {
-      "VERCEL_FORCE_NO_BUILD_CACHE": "1"
-    }
   },
   "functions": {
     "app/api/*/route.ts": {
       "maxDuration": 30
     }
   },
-  "cleanUrls": true,
-  "trailingSlash": false,
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
     {
       "source": "/api/(.*)",
       "headers": [
@@ -31,14 +38,12 @@
         {
           "key": "Access-Control-Allow-Headers",
           "value": "Content-Type, Authorization"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
         }
       ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/external/(.*)",
-      "destination": "https://ghost-api.onrender.com/api/$1"
     }
   ]
 }
