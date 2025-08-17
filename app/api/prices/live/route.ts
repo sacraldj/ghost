@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { bybitClient } from '@/lib/bybit-client'
+import { bybitClient } from '../../../lib/bybit-client'
 
 // Получение live цен через реальный Bybit API
 async function fetchLivePrice(symbol: string): Promise<number> {

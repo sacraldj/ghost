@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { bybitClient } from '@/lib/bybit-client'
+import { bybitClient } from '../../../lib/bybit-client'
 
 export async function GET(request: NextRequest) {
   try {
