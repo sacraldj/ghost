@@ -258,7 +258,7 @@ class SignalOrchestratorWithSupabase:
                 'tp3': float(signal.targets[2]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 2 else None,
                 'tp4': float(signal.targets[3]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 3 else None,
                 'sl': float(signal.stop_loss) if hasattr(signal, 'stop_loss') and signal.stop_loss else None,
-                'leverage_hint': getattr(signal, 'leverage', None),
+                'leverage_hint': self._extract_leverage_number(getattr(signal, 'leverage', None)),
                 'confidence': float(signal.confidence) if hasattr(signal, 'confidence') else 0.5,
                 
                 # Временные поля в соответствии со схемой Prisma
@@ -378,6 +378,23 @@ class SignalOrchestratorWithSupabase:
             'notes': config['notes']
         }
     
+    def _extract_leverage_number(self, leverage_str: str) -> Optional[int]:
+        """Извлекает число из строки плеча"""
+        if not leverage_str:
+            return None
+        
+        try:
+            # Ищем число в строке типа "10x", "5x - 10x", "10"
+            import re
+            numbers = re.findall(r'(\d+)', str(leverage_str))
+            if numbers:
+                # Берем максимальное значение
+                return max(int(num) for num in numbers)
+        except:
+            pass
+        
+        return None
+
     async def test_supabase_connection(self) -> bool:
         """Тест подключения к Supabase"""
         try:
