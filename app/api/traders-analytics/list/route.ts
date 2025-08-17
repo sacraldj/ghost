@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+export const runtime = 'nodejs'
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 )
 
 export async function GET(request: NextRequest) {
@@ -129,14 +131,31 @@ export async function GET(request: NextRequest) {
       total: sortedTraders.length,
       strategy: strategy,
       period: period,
-      data_source: "real"
+      data_source: "real",
+      timestamp: new Date().toISOString()
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
     })
 
   } catch (error) {
     console.error('Error in traders analytics list:', error)
     return NextResponse.json(
-      { traders: [], total: 0, error: 'Internal server error' },
-      { status: 500 }
+      { 
+        traders: [], 
+        total: 0, 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
     )
   }
 }
