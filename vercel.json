@@ -14,7 +14,8 @@
       "maxDuration": 30
     }
   },
-  "public": true,
+  "cleanUrls": true,
+  "trailingSlash": false,
   "headers": [
     {
       "source": "/api/(.*)",
