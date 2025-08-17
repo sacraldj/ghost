@@ -11,8 +11,7 @@
   },
   "functions": {
     "app/api/*/route.ts": {
-      "maxDuration": 30,
-      "runtime": "nodejs18.x"
+      "maxDuration": 30
     }
   },
   "public": true,
