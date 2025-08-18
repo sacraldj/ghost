@@ -22,6 +22,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from signals.parsers.whales_crypto_parser import WhalesCryptoParser
 from signals.parsers.parser_2trade import TwoTradeParser
 from signals.parsers.crypto_hub_parser import CryptoHubParser
+from signals.parsers.ghost_test_parser import GhostTestParser
 from signals.parsers.signal_parser_base import ParsedSignal
 
 # Импортируем CryptoAttack24 парсер
@@ -61,6 +62,9 @@ class SignalOrchestratorWithSupabase:
             'slivaeminfo': TwoTradeParser(),  # Алиас для 2Trade
             'crypto_hub_vip': CryptoHubParser(),
             'cryptohubvip': CryptoHubParser(),  # Алиас
+            # Тестовый канал
+            'ghostsignaltest': GhostTestParser(),
+            'ghost_test': GhostTestParser(),  # Алиас
         }
         
         # Добавляем CryptoAttack24 парсер если доступен
@@ -263,6 +267,10 @@ class SignalOrchestratorWithSupabase:
             # Сохраняем успешно обработанный сигнал в Supabase
             await self._save_parsed_signal_to_supabase(signal, best_parser_name, raw_text)
             
+            # Для тестового канала ghostsignaltest также сохраняем в v_trades
+            if trader_id in ['ghostsignaltest', 'ghost_test'] and isinstance(self.parsers.get(trader_id), GhostTestParser):
+                await self._save_to_v_trades_table(signal, trader_id, raw_text)
+            
             logger.info(f"✅ Signal parsed and saved to Supabase with {best_parser_name}: {signal.symbol} {signal.direction}")
             return signal
             
@@ -364,6 +372,94 @@ class SignalOrchestratorWithSupabase:
                 
         except Exception as e:
             logger.error(f"❌ Failed to save parsed signal: {e}")
+            self.stats['supabase_errors'] += 1
+    
+    async def _save_to_v_trades_table(self, signal: ParsedSignal, trader_id: str, raw_text: str):
+        """Специальная функция для сохранения тестовых сигналов в таблицу v_trades"""
+        try:
+            if not self.supabase:
+                logger.warning("⚠️ Supabase not available, skipping v_trades save")
+                return
+            
+            import uuid
+            from datetime import timezone
+            
+            # Генерируем уникальный ID для записи
+            trade_id = str(uuid.uuid4())
+            current_timestamp = datetime.now(timezone.utc)
+            posted_timestamp = int(current_timestamp.timestamp() * 1000)  # unix ms
+            
+            # Определяем цены входа
+            entry_min = None
+            entry_max = None
+            
+            if hasattr(signal, 'entry_zone') and signal.entry_zone:
+                entry_min = float(min(signal.entry_zone))
+                entry_max = float(max(signal.entry_zone))
+            elif hasattr(signal, 'entry_single') and signal.entry_single:
+                entry_min = float(signal.entry_single)
+                entry_max = float(signal.entry_single)
+            
+            # Подготавливаем данные для v_trades таблицы
+            v_trades_data = {
+                # Основные поля
+                'id': trade_id,
+                'signal_id': signal.signal_id if hasattr(signal, 'signal_id') else None,
+                'source': f"tg_{trader_id}",
+                'source_type': 'telegram',
+                'source_name': 'Ghost Signal Test',
+                'source_ref': f"tg://{trader_id}",
+                'original_text': raw_text,
+                'signal_reason': getattr(signal, 'reason', '') or '',
+                'posted_ts': posted_timestamp,
+                
+                # Торговые данные
+                'symbol': signal.symbol,
+                'side': signal.direction.value,
+                'entry_type': 'zone' if (hasattr(signal, 'entry_zone') and signal.entry_zone and len(signal.entry_zone) > 1) else 'exact',
+                'entry_min': entry_min,
+                'entry_max': entry_max,
+                
+                # Цели
+                'tp1': float(signal.targets[0]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 0 else None,
+                'tp2': float(signal.targets[1]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 1 else None,
+                'tp3': float(signal.targets[2]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 2 else None,
+                'targets_json': str(signal.targets) if hasattr(signal, 'targets') and signal.targets else '[]',
+                
+                # Стоп-лосс
+                'sl': float(signal.stop_loss) if hasattr(signal, 'stop_loss') and signal.stop_loss else None,
+                'sl_type': 'hard',
+                
+                # Параметры торговли
+                'source_leverage': getattr(signal, 'leverage', '15x'),
+                'strategy_id': 'S_A_TP1_BE_TP2',
+                'strategy_version': '1',
+                'fee_rate': 0.0005,
+                'leverage': self._extract_leverage_number(getattr(signal, 'leverage', '15x')),
+                'margin_usd': 100.0,
+                'entry_timeout_sec': 172800,  # 48 часов
+                
+                # Статус
+                'was_fillable': True,  # По умолчанию считаем что вход достижим
+                'status': 'sim_open',  # Начальный статус симуляции
+                
+                # Временные метки
+                'created_at': current_timestamp.isoformat(),
+                'updated_at': current_timestamp.isoformat()
+            }
+            
+            # Сохраняем в таблицу v_trades
+            result = self.supabase.table('v_trades').insert(v_trades_data).execute()
+            
+            if result.data:
+                logger.info(f"✅ Ghost test signal saved to v_trades: {signal.symbol} {signal.direction.value}")
+                self.stats['v_trades_saves'] = self.stats.get('v_trades_saves', 0) + 1
+            else:
+                logger.error(f"❌ Failed to save to v_trades table")
+                self.stats['supabase_errors'] += 1
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to save to v_trades table: {e}")
             self.stats['supabase_errors'] += 1
     
     async def get_stats(self) -> Dict[str, Any]:
