@@ -7,7 +7,7 @@ services:
     name: ghost-telegram-bridge
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python core/telegram_render_bridge.py"
+    startCommand: "python start_all.py"
     plan: starter  # Можно изменить на standard или pro
     
     # Environment variables
@@ -18,10 +18,18 @@ services:
         sync: false  # Set manually in Render dashboard
       - key: TELEGRAM_PHONE
         sync: false  # Optional
-      - key: SUPABASE_URL
+      - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false  # CRITICAL: Service role key needed for backend
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false  # Fallback key name
+      - key: NEWS_API_KEY
+        sync: false  # For news engine
+      - key: CRYPTOCOMPARE_API_KEY
+        sync: false  # For price data
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false  # For market data
       - key: RENDER_WEBHOOK_URL
         value: https://ghost-api.onrender.com/webhooks/telegram
       - key: PYTHONPATH
@@ -43,12 +51,12 @@ services:
     plan: starter
     
     envVars:
-      - key: SUPABASE_URL
+      - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false  # CRITICAL: Service role key needed for backend
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false  # Fallback key name
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY

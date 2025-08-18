@@ -870,3 +870,121 @@ model SystemStats {
   @@index([component, timestamp])
   @@map("system_stats")
 }
+
+// ================================
+// VIRTUAL TRADES (GHOST-META v1.0)
+// ================================
+// Отдельная таблица для виртуальных сделок
+// Стратегия: TP1(50%) → SL в BE → TP2(50%)
+
+enum TradeSide {
+  LONG
+  SHORT
+}
+
+enum EntryType {
+  zone
+  exact
+}
+
+enum VirtualStatus {
+  sim_open
+  sim_closed
+  sim_skipped
+}
+
+enum SourceType {
+  telegram
+  manual
+  api
+}
+
+model VirtualTrade {
+  // 1) Идентификация/Источник
+  id              String      @id @default(cuid())
+  signalId        String?     @map("signal_id")
+  source          String?
+  sourceType      SourceType? @default(telegram) @map("source_type")  
+  sourceName      String?     @map("source_name")
+  sourceRef       String?     @map("source_ref")
+  originalText    String?     @map("original_text")
+  signalReason    String?     @map("signal_reason")
+  postedTs        BigInt?     @map("posted_ts")
+
+  // 2) Паспорт сигнала  
+  symbol          String
+  side            TradeSide
+  entryType       EntryType?  @default(zone) @map("entry_type")
+  entryMin        Decimal?    @map("entry_min") @db.Decimal(20, 8)
+  entryMax        Decimal?    @map("entry_max") @db.Decimal(20, 8)
+  tp1             Decimal?    @db.Decimal(20, 8)
+  tp2             Decimal?    @db.Decimal(20, 8)
+  tp3             Decimal?    @db.Decimal(20, 8)
+  targetsJson     Json?       @map("targets_json")
+  sl              Decimal?    @db.Decimal(20, 8)
+  slType          String?     @default("hard") @map("sl_type")
+  sourceLeverage  String?     @map("source_leverage")
+
+  // 3) Параметры симуляции
+  strategyId       String  @default("S_A_TP1_BE_TP2") @map("strategy_id")
+  strategyVersion  String  @default("1") @map("strategy_version")
+  feeRate          Decimal @default(0.00055) @map("fee_rate") @db.Decimal(10, 6)
+  leverage         Decimal @default(15) @map("leverage") @db.Decimal(10, 2)
+  marginUsd        Decimal @default(100) @map("margin_usd") @db.Decimal(10, 2)
+  entryTimeoutSec  Int     @default(172800) @map("entry_timeout_sec")
+
+  // 4) Виртуальный вход
+  wasFillable     Boolean? @default(false) @map("was_fillable")
+  entryTs         BigInt?  @map("entry_ts")
+  entryPrice      Decimal? @map("entry_price") @db.Decimal(20, 8)
+  positionQty     Decimal? @map("position_qty") @db.Decimal(20, 8)
+
+  // 5) События по ходу сделки
+  tp1Hit          Boolean? @default(false) @map("tp1_hit")
+  tp1Ts           BigInt?  @map("tp1_ts")
+  beHit           Boolean? @default(false) @map("be_hit")
+  beTs            BigInt?  @map("be_ts")
+  bePrice         Decimal? @map("be_price") @db.Decimal(20, 8)
+  tp2Hit          Boolean? @default(false) @map("tp2_hit")
+  tp2Ts           BigInt?  @map("tp2_ts")
+  slHit           Boolean? @default(false) @map("sl_hit")
+  slTs            BigInt?  @map("sl_ts")
+
+  // 6) Финансы (виртуальные)
+  feeOpen         Decimal? @map("fee_open") @db.Decimal(20, 8)
+  feeClose        Decimal? @map("fee_close") @db.Decimal(20, 8)
+  feeTotal        Decimal? @map("fee_total") @db.Decimal(20, 8)
+  pnlTp1          Decimal? @map("pnl_tp1") @db.Decimal(20, 8)
+  pnlTp2          Decimal? @map("pnl_tp2") @db.Decimal(20, 8)
+  pnlGross        Decimal? @map("pnl_gross") @db.Decimal(20, 8)
+  pnlNet          Decimal? @map("pnl_net") @db.Decimal(20, 8)
+  roiPercent      Decimal? @map("roi_percent") @db.Decimal(10, 4)
+
+  // 7) Длительности/итоги
+  closedTs        BigInt?        @map("closed_ts")
+  durationSec     Int?           @map("duration_sec")
+  tp1DurationSec  Int?           @map("tp1_duration_sec")
+  tp2DurationSec  Int?           @map("tp2_duration_sec")
+  slDurationSec   Int?           @map("sl_duration_sec")
+  status          VirtualStatus? @default(sim_open)
+  exitReason      String?        @map("exit_reason")
+  tpHit           String?        @map("tp_hit")
+  tpCountHit      Int?           @default(0) @map("tp_count_hit")
+
+  // 8) Аналитика фондового уровня  
+  mfePct            Decimal? @map("mfe_pct") @db.Decimal(10, 4)
+  maePct            Decimal? @map("mae_pct") @db.Decimal(10, 4)
+  reachedAfterExit  Json?    @map("reached_after_exit")
+
+  // 9) Служебное
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([symbol, postedTs])
+  @@index([strategyId, postedTs])
+  @@index([createdAt])
+  @@index([side, symbol])
+  @@index([sourceType, source])
+  @@map("v_trades")
+}

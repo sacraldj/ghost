@@ -17,12 +17,13 @@ import {
   ChevronDown,
   Search,
   Wifi,
-  WifiOff
+  WifiOff,
+  TestTube
 } from 'lucide-react'
 
 interface GhostLayoutExactProps {
   children: ReactNode
-  currentPage?: string
+  currentPage?: 'traders' | 'signals' | 'news' | 'trading' | 'analytics' | 'settings' | 'test-table'
 }
 
 const navigation = [
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Trading', href: '/dashboard', icon: TrendingUp },
   { name: 'Signals', href: '/signals', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Test Table', href: '/test-table', icon: TestTube },
   { name: 'News', href: '/news', icon: Bell },
   { name: 'Chat', href: '/chat', icon: MessageSquare },
   { name: 'Settings', href: '/settings', icon: Settings },

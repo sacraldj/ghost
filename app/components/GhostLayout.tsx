@@ -7,7 +7,7 @@ import { Badge } from './ui/badge'
 
 interface GhostLayoutProps {
   children: React.ReactNode
-  currentPage?: 'traders' | 'signals' | 'news' | 'trading' | 'analytics' | 'settings'
+  currentPage?: 'traders' | 'signals' | 'news' | 'trading' | 'analytics' | 'settings' | 'test-table'
   userName?: string
   userRole?: string
 }
@@ -55,6 +55,13 @@ const GhostLayout: React.FC<GhostLayoutProps> = ({
       label: 'Analytics',
       active: currentPage === 'analytics',
       href: '/analytics'
+    },
+    {
+      id: 'test-table',
+      icon: '🧪',
+      label: 'Test Table',
+      active: currentPage === 'test-table',
+      href: '/test-table'
     },
     {
       id: 'settings',

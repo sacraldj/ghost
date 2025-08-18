@@ -49,6 +49,9 @@ class SignalOrchestratorWithSupabase:
         # Инициализация Supabase ПЕРВЫМ ДЕЛОМ
         self.supabase = self._init_supabase()
         
+        # Инициализация Telegram Listener для РЕАЛЬНОГО прослушивания
+        self.telegram_listener = None
+        
         # Инициализируем специализированные парсеры для каждого канала трейдера
         self.parsers = {
             # Основные парсеры каналов
@@ -116,6 +119,67 @@ class SignalOrchestratorWithSupabase:
         }
         
         logger.info(f"✅ SignalOrchestrator with Supabase initialized with {len(self.parsers)} parsers")
+    
+    async def start_telegram_listening(self):
+        """Запуск прослушивания Telegram каналов"""
+        try:
+            from core.telegram_listener import TelegramListener
+            
+            api_id = os.getenv('TELEGRAM_API_ID')
+            api_hash = os.getenv('TELEGRAM_API_HASH')
+            phone = os.getenv('TELEGRAM_PHONE')
+            
+            if not api_id or not api_hash:
+                logger.error("❌ TELEGRAM_API_ID and TELEGRAM_API_HASH required")
+                return False
+                
+            self.telegram_listener = TelegramListener(api_id, api_hash, phone)
+            
+            # Добавляем каналы
+            channels = [
+                ("@whalesguide", "whales_guide_main"),
+                ("@slivaeminfo", "2trade_premium"), 
+                ("@cryptohubvip", "crypto_hub_vip"),
+                ("@cryptoattack24", "cryptoattack24")
+            ]
+            
+            for channel, trader_id in channels:
+                from core.telegram_listener import ChannelConfig
+                config = ChannelConfig(
+                    channel_id=channel,
+                    channel_name=trader_id,
+                    trader_id=trader_id,
+                    is_active=True
+                )
+                self.telegram_listener.add_channel(config)
+            
+            # Устанавливаем обработчик
+            self.telegram_listener.set_message_handler(self._handle_telegram_message)
+            
+            # Запускаем
+            await self.telegram_listener.initialize()
+            asyncio.create_task(self.telegram_listener.start_listening())
+            
+            logger.info("✅ Telegram listening started")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start Telegram: {e}")
+            return False
+    
+    async def _handle_telegram_message(self, message_data):
+        """Обработчик сообщений из Telegram"""
+        try:
+            text = message_data.get("text", "")
+            trader_id = message_data.get("trader_id", "unknown")
+            
+            # Обрабатываем через наши парсеры
+            result = await self.process_raw_signal(text, trader_id, trader_id)
+            if result:
+                logger.info(f"✅ Processed live signal: {result.symbol}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error handling Telegram message: {e}")
     
     def _init_supabase(self) -> Optional[Client]:
         """Инициализация Supabase клиента"""

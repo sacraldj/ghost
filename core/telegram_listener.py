@@ -22,9 +22,31 @@ from telethon.tl.types import Channel, Chat
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.signal_router import route_signal
-from core.trader_registry import TraderRegistry
-from signals.image_parser import get_image_parser
+
+# Safe imports with fallbacks for cloud deployment
+try:
+    from core.signal_router import route_signal
+except ImportError:
+    logger.warning("⚠️ signal_router not available, using fallback")
+    def route_signal(*args, **kwargs):
+        return None
+
+try:
+    from core.trader_registry import TraderRegistry
+except ImportError:
+    logger.warning("⚠️ trader_registry not available, using fallback")
+    class TraderRegistry:
+        def __init__(self):
+            pass
+        def get_trader(self, trader_id):
+            return None
+
+try:
+    from signals.image_parser import get_image_parser
+except ImportError:
+    logger.warning("⚠️ image_parser not available, using fallback")
+    def get_image_parser():
+        return None
 
 logger = logging.getLogger(__name__)
 

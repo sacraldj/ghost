@@ -63,6 +63,13 @@ class UnifiedSystemManager:
                     stats = await orchestrator_with_supabase.get_stats()
                     logger.info(f"📊 Статистика оркестратора: {stats['signals_processed']} обработано, {stats['supabase_saves']} сохранено")
                     
+                    # Запускаем прослушивание Telegram
+                    telegram_started = await orchestrator_with_supabase.start_telegram_listening()
+                    if telegram_started:
+                        logger.info("✅ Telegram прослушивание запущено!")
+                    else:
+                        logger.warning("⚠️ Telegram прослушивание не удалось запустить")
+                    
                     # Запускаем основную систему
                     await self.run_supabase_orchestrator_loop(orchestrator_with_supabase)
                 else:
@@ -70,17 +77,9 @@ class UnifiedSystemManager:
                     raise Exception("Supabase connection failed")
                     
             except Exception as se:
-                logger.warning(f"⚠️ Ошибка с SignalOrchestratorWithSupabase: {se}")
-                
-                # Пробуем старую систему
-                try:
-                    from scripts.start_live_system import LiveSystemOrchestrator
-                    orchestrator = LiveSystemOrchestrator()
-                    await orchestrator.start_system()
-                except ImportError as ie:
-                    logger.warning(f"⚠️ Не удалось импортировать LiveSystemOrchestrator: {ie}")
-                    logger.info("🔄 Запускаем альтернативную систему сбора данных...")
-                    await self.start_alternative_data_collection()
+                logger.error(f"❌ Ошибка с SignalOrchestratorWithSupabase: {se}")
+                logger.error("🛑 Система не может работать без SignalOrchestratorWithSupabase")
+                raise se
             
         except Exception as e:
             logger.error(f"❌ Ошибка в Live System: {e}")
@@ -270,8 +269,7 @@ class UnifiedSystemManager:
             # 2. Запускаем оркестратор и live систему параллельно
             logger.info("🚀 Запуск всех компонентов системы...")
             
-            # Создаем задачи для параллельного выполнения
-            self.orchestrator_task = asyncio.create_task(self.start_orchestrator())
+            # Запускаем только unified систему
             self.live_system_task = asyncio.create_task(self.start_live_system())
             
             # Запускаем задачи в фоне
@@ -281,10 +279,6 @@ class UnifiedSystemManager:
             while self.running:
                 try:
                     # Проверяем состояние задач
-                    if self.orchestrator_task.done():
-                        logger.warning("⚠️ Orchestrator task завершилась, перезапускаем...")
-                        self.orchestrator_task = asyncio.create_task(self.start_orchestrator())
-                    
                     if self.live_system_task.done():
                         logger.warning("⚠️ Live system task завершилась, перезапускаем...")
                         self.live_system_task = asyncio.create_task(self.start_live_system())

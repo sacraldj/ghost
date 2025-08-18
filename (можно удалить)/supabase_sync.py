@@ -44,16 +44,41 @@ class SupabaseSync:
             self.supabase: Client = create_client(self.supabase_url, self.supabase_secret_key)
             logger.info("✅ Supabase client initialized with new API keys")
     
-    def get_local_news(self, db_path: str = "../ghost_news.db") -> List[Dict]:
+    def get_local_news(self, db_path: str = None) -> List[Dict]:
         """Получение новостей из локальной SQLite"""
         try:
+            # Use in-memory database for cloud deployment
+            if db_path is None:
+                # Try to find database in several locations
+                possible_paths = [
+                    "ghost_news.db",
+                    "../ghost_news.db", 
+                    "/tmp/ghost_news.db",
+                    "/opt/render/project/src/ghost_news.db"
+                ]
+                
+                db_path = None
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        db_path = path
+                        break
+                
+                # If no database found, create in-memory database
+                if db_path is None:
+                    logger.warning("⚠️ No SQLite database found, using in-memory database")
+                    db_path = ":memory:"
+            
             # Добавляем отладочную информацию
             import os
             current_dir = os.getcwd()
-            full_db_path = os.path.abspath(db_path)
-            logger.info(f"🔍 Current directory: {current_dir}")
-            logger.info(f"🔍 Database path: {full_db_path}")
-            logger.info(f"🔍 Database exists: {os.path.exists(full_db_path)}")
+            
+            if db_path != ":memory:":
+                full_db_path = os.path.abspath(db_path)
+                logger.info(f"🔍 Current directory: {current_dir}")
+                logger.info(f"🔍 Database path: {full_db_path}")
+                logger.info(f"🔍 Database exists: {os.path.exists(full_db_path)}")
+            else:
+                logger.info(f"🔍 Using in-memory SQLite database")
             
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()

@@ -17,8 +17,19 @@ from dotenv import load_dotenv
 
 # Загружаем переменные из .env файла
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-from nltk.sentiment import SentimentIntensityAnalyzer
-import nltk
+try:
+    from nltk.sentiment import SentimentIntensityAnalyzer
+    import nltk
+    # Download required NLTK data if not present
+    try:
+        nltk.data.find('vader_lexicon')
+    except LookupError:
+        logger.info("📦 Downloading NLTK vader_lexicon...")
+        nltk.download('vader_lexicon', quiet=True)
+except ImportError:
+    logger.warning("⚠️ NLTK not available, sentiment analysis disabled")
+    SentimentIntensityAnalyzer = None
+    nltk = None
 import yaml
 import os
 from pathlib import Path
