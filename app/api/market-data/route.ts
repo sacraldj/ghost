@@ -105,17 +105,84 @@ function calculateRSI(prices: number[], period: number = 14): number[] {
 }
 
 // Генерация демо данных для цен
+// Функция для получения реальных исторических данных с Bybit
+async function generateRealPriceData(symbol: string, timeframe: string, points: number = 100): Promise<PriceDataPoint[]> {
+  try {
+    // Конвертируем timeframe для Bybit API
+    const bybitInterval = {
+      '1M': '1',
+      '5M': '5', 
+      '15M': '15',
+      '1H': '60',
+      '4H': '240',
+      '1D': '1440'
+    }[timeframe] || '60'
+    
+    console.log(`📊 Fetching real historical data for ${symbol} (${timeframe}, ${points} candles)`)
+    
+    // Получаем реальные исторические данные с Bybit
+    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${bybitInterval}&limit=${Math.min(points, 200)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      cache: 'no-store'
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    
+    if (data.retCode === 0 && data.result && data.result.list) {
+      const priceData: PriceDataPoint[] = data.result.list.map((candle: any) => ({
+        timestamp: new Date(parseInt(candle[0])).toISOString(), // startTime
+        open: parseFloat(candle[1]),
+        high: parseFloat(candle[2]), 
+        low: parseFloat(candle[3]),
+        close: parseFloat(candle[4]),
+        volume: parseFloat(candle[5])
+      })).reverse() // Bybit возвращает в обратном порядке
+      
+      // Добавляем технические индикаторы
+      const closePrices = priceData.map(p => p.close)
+      const ma20 = calculateMA(closePrices, 20)
+      const ma50 = calculateMA(closePrices, 50)
+      const rsi = calculateRSI(closePrices)
+      
+      priceData.forEach((point, i) => {
+        point.ma20 = ma20[i]
+        point.ma50 = ma50[i]
+        point.rsi = rsi[i]
+      })
+      
+      console.log(`✅ Loaded ${priceData.length} real candles from Bybit for ${symbol}`)
+      return priceData
+    } else {
+      throw new Error(`Invalid response from Bybit: ${JSON.stringify(data)}`)
+    }
+  } catch (error) {
+    console.error(`❌ Error fetching real historical data for ${symbol}:`, error)
+    
+    // Fallback: возвращаем улучшенные моковые данные
+    return generatePriceData(symbol, timeframe, points)
+  }
+}
+
 function generatePriceData(symbol: string, timeframe: string, points: number = 100): PriceDataPoint[] {
   const data: PriceDataPoint[] = []
   const now = new Date()
   
-  // Базовые цены для разных символов
+  // Базовые цены для разных символов (обновленные реалистичные цены)
   const basePrices: { [key: string]: number } = {
-    'BTCUSDT': 43000,
-    'ETHUSDT': 2500,
-    'BNBUSDT': 320,
+    'BTCUSDT': 115000,
+    'ETHUSDT': 4200,
+    'BNBUSDT': 700,
     'STGUSDT': 0.45,
-    'ZROUSDT': 4.2
+    'ZROUSDT': 4.2,
+    'SOLUSDT': 260,
+    'ADAUSDT': 1.25
   }
   
   let basePrice = basePrices[symbol] || 100
@@ -278,10 +345,10 @@ export async function GET(request: NextRequest) {
     const timeframe = searchParams.get('timeframe') || '1H'
     const limit = parseInt(searchParams.get('limit') || '100')
     
-    // Генерация данных (в продакшене будут реальные данные из Binance/Bybit API)
-    const priceData = generatePriceData(symbol, timeframe, limit)
-    const newsEvents = generateNewsEvents(symbol)
-    const tradingSignals = generateTradingSignals(symbol)
+    // Получаем реальные исторические данные с Bybit
+    const priceData = await generateRealPriceData(symbol, timeframe, limit)
+    const newsEvents = generateNewsEvents(symbol) // Пока оставляем моковые
+    const tradingSignals = generateTradingSignals(symbol) // Пока оставляем моковые
     
     // Расчет текущих метрик
     const currentPrice = priceData[priceData.length - 1]?.close || 0
