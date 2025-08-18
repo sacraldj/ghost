@@ -13,9 +13,13 @@ import threading
 import time
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from dotenv import load_dotenv
 
 # Добавляем корневую папку в путь
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Загружаем переменные окружения ПЕРВЫМ ДЕЛОМ
+load_dotenv()
 
 # Настройка логирования
 os.makedirs("logs", exist_ok=True)

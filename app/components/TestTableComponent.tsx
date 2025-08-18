@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from './ui/button'
 
 interface ColumnSchema {
   column_name: string
@@ -78,14 +77,7 @@ const tableSchema: ColumnSchema[] = [
 ]
 
 export default function TestTableComponent() {
-  const [formData, setFormData] = useState<Record<string, any>>(() => {
-    const initialData: Record<string, any> = {}
-    tableSchema.forEach(field => {
-      initialData[field.column_name] = field.default_value
-    })
-    return initialData
-  })
-  const [saving, setSaving] = useState(false)
+  const [selectedRecord, setSelectedRecord] = useState<any>(null)
   const [savedRecords, setSavedRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -109,300 +101,158 @@ export default function TestTableComponent() {
     }
   }
 
-  const handleInputChange = (fieldName: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [fieldName]: value
-    }))
+  const handleRecordClick = (record: any) => {
+    setSelectedRecord(record)
   }
 
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      // Генерируем уникальный ID если не заполнен
-      if (!formData.id) {
-        formData.id = `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      }
-
-      const response = await fetch('/api/test-table', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      })
-      
-      const result = await response.json()
-      
-      if (response.ok) {
-        alert('✅ Record saved successfully!')
-        // Сбрасываем форму
-        const resetData: Record<string, any> = {}
-        tableSchema.forEach(field => {
-          resetData[field.column_name] = field.default_value
-        })
-        setFormData(resetData)
-        // Обновляем список записей
-        await fetchSavedRecords()
-      } else {
-        alert('❌ Error: ' + result.error)
-      }
-    } catch (error) {
-      console.error('Error saving record:', error)
-      alert('❌ Network error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const renderInput = (field: ColumnSchema) => {
-    const value = formData[field.column_name] ?? ''
-    const commonClasses = "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
-
-    switch (field.input_type) {
-      case 'select':
-        return (
-          <select
-            className={commonClasses}
-            value={value}
-            onChange={(e) => handleInputChange(field.column_name, e.target.value)}
-          >
-            {field.options?.map(option => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        )
-      
-      case 'number':
-        return (
-          <input
-            type="number"
-            step="any"
-            className={commonClasses}
-            value={value || ''}
-            onChange={(e) => handleInputChange(field.column_name, e.target.value ? parseFloat(e.target.value) : null)}
-            placeholder={field.description}
-          />
-        )
-      
-      case 'textarea':
-        return (
-          <textarea
-            className={commonClasses}
-            rows={2}
-            value={value}
-            onChange={(e) => handleInputChange(field.column_name, e.target.value)}
-            placeholder={field.description}
-          />
-        )
-      
-      case 'datetime':
-        return (
-          <input
-            type="datetime-local"
-            className={commonClasses}
-            value={value ? new Date(value).toISOString().slice(0, 16) : ''}
-            onChange={(e) => handleInputChange(field.column_name, e.target.value ? new Date(e.target.value).toISOString() : '')}
-          />
-        )
-      
-      default: // text
-        return (
-          <input
-            type="text"
-            className={commonClasses}
-            value={value}
-            onChange={(e) => handleInputChange(field.column_name, e.target.value)}
-            placeholder={field.description}
-          />
-        )
-    }
+  const getFieldValue = (fieldName: string) => {
+    if (!selectedRecord) return ''
+    const value = selectedRecord[fieldName]
+    if (value === null || value === undefined) return ''
+    return String(value)
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl p-4 border border-gray-800/50">
-        <h2 className="text-lg font-semibold text-white">💾 Add New Record to v_trades</h2>
-        <p className="text-gray-400 text-sm mt-1">Заполните поля и нажмите Save для сохранения в Supabase</p>
+        <h2 className="text-lg font-semibold text-white">🧪 v_trades Viewer</h2>
+        <p className="text-gray-400 text-sm mt-1">
+          {selectedRecord 
+            ? `Просмотр записи: ${selectedRecord.id?.substring(0, 8) || 'N/A'}...` 
+            : 'Выберите запись из списка для просмотра полей'}
+        </p>
       </div>
 
-      {/* Editable Table */}
-      <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden">
-        <div className="p-4 bg-gray-900/50 border-b border-gray-800">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-gray-300">СИГНАЛ - 2TRADE</h2>
-            <div className="text-xs text-gray-500">{tableSchema.length} columns</div>
-          </div>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-900/30">
-                <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                  column_name
-                </th>
-                <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                  type_and_constraints
-                </th>
-                <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                  description
-                </th>
-                <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                  value
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800/30">
-              {tableSchema.map((field, index) => (
-                <tr 
-                  key={field.column_name} 
-                  className="hover:bg-gray-900/20 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{field.column_name}</span>
-                      {field.column_name === 'id' && (
-                        <span className="text-yellow-500 text-xs">🔑</span>
-                      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Records List */}
+        <div className="lg:col-span-1">
+          <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden">
+            <div className="p-4 bg-gray-900/50 border-b border-gray-800">
+              <h3 className="text-sm font-medium text-gray-300">📋 Записи v_trades</h3>
+              <div className="text-xs text-gray-500 mt-1">
+                {loading ? 'Загрузка...' : `${savedRecords.length} записей`}
+              </div>
+            </div>
+            
+            <div className="max-h-96 overflow-y-auto">
+              {loading ? (
+                <div className="p-4 text-center text-gray-400">
+                  <div className="animate-pulse">Загружаем записи...</div>
+                </div>
+              ) : savedRecords.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  Нет записей в v_trades
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-800/30">
+                  {savedRecords.map((record, index) => (
+                    <div
+                      key={record.id || index}
+                      onClick={() => handleRecordClick(record)}
+                      className={`p-3 cursor-pointer hover:bg-gray-900/30 transition-colors ${
+                        selectedRecord?.id === record.id ? 'bg-blue-900/30 border-l-2 border-l-blue-500' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-blue-400 font-medium text-sm">
+                            {record.symbol || 'N/A'}
+                          </div>
+                          <div className="text-gray-400 text-xs">
+                            {record.id?.substring(0, 12) || 'N/A'}...
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`px-2 py-1 rounded text-xs font-medium ${
+                            record.side === 'LONG' 
+                              ? 'bg-green-900/50 text-green-400' 
+                              : 'bg-red-900/50 text-red-400'
+                          }`}>
+                            {record.side || 'N/A'}
+                          </div>
+                          <div className="text-gray-500 text-xs mt-1">
+                            {record.created_at 
+                              ? new Date(record.created_at).toLocaleDateString('ru-RU') 
+                              : 'N/A'
+                            }
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-blue-400 font-mono text-xs">
-                      {field.type_and_constraints}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-gray-300 text-xs">
-                      {field.description}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {renderInput(field)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Save Button Under Table */}
-      <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl p-4 border border-gray-800/50">
-        <div className="flex justify-center">
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-8 py-3 rounded-lg font-semibold text-lg"
-          >
-            {saving ? '💾 Сохранение...' : '💾 Сохранить'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Saved Records List */}
-      <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden">
-        <div className="p-4 bg-gray-900/50 border-b border-gray-800">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">📋 Сохраненные записи</h2>
-            <div className="text-sm text-gray-400">
-              {loading ? 'Загружаем...' : `${savedRecords.length} записей`}
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
-        
-        {loading ? (
-          <div className="p-8 text-center text-gray-400">
-            <div className="animate-pulse">Загружаем записи...</div>
-          </div>
-        ) : savedRecords.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            Пока нет сохраненных записей. Создайте первую запись выше!
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-900/30">
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    ID
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Symbol
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Side
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Entry Min
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Entry Max
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    TP1
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    TP2
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    SL
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
-                    Created
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/30">
-                {savedRecords.map((record, index) => (
-                  <tr key={record.id || index} className="hover:bg-gray-900/20 transition-colors">
-                    <td className="px-4 py-3 text-gray-300 font-mono text-xs">
-                      {record.id?.substring(0, 8)}...
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-blue-400 font-medium">{record.symbol || 'N/A'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        record.side === 'LONG' 
-                          ? 'bg-green-900/50 text-green-400' 
-                          : 'bg-red-900/50 text-red-400'
-                      }`}>
-                        {record.side || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-300">{record.entry_min || 'N/A'}</td>
-                    <td className="px-4 py-3 text-gray-300">{record.entry_max || 'N/A'}</td>
-                    <td className="px-4 py-3 text-green-400">{record.tp1 || 'N/A'}</td>
-                    <td className="px-4 py-3 text-green-400">{record.tp2 || 'N/A'}</td>
-                    <td className="px-4 py-3 text-red-400">{record.sl || 'N/A'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        record.status === 'sim_open' 
-                          ? 'bg-blue-900/50 text-blue-400' 
-                          : record.status === 'sim_closed'
-                          ? 'bg-gray-900/50 text-gray-400'
-                          : 'bg-yellow-900/50 text-yellow-400'
-                      }`}>
-                        {record.status || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
-                      {record.created_at 
-                        ? new Date(record.created_at).toLocaleDateString('ru-RU')
-                        : 'N/A'
-                      }
-                    </td>
+
+        {/* Field Details Table */}
+        <div className="lg:col-span-2">
+          <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden">
+            <div className="p-4 bg-gray-900/50 border-b border-gray-800">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-300">📊 Поля записи</h3>
+                <div className="text-xs text-gray-500">{tableSchema.length} полей</div>
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-900/50">
+                  <tr className="bg-gray-900/30">
+                    <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
+                      column_name
+                    </th>
+                    <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
+                      type_and_constraints
+                    </th>
+                    <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
+                      description
+                    </th>
+                    <th className="px-4 py-3 text-left text-gray-400 font-medium text-xs uppercase tracking-wide">
+                      value
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-800/30">
+                  {tableSchema.map((field, index) => (
+                    <tr 
+                      key={field.column_name} 
+                      className="hover:bg-gray-900/20 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-medium">{field.column_name}</span>
+                          {field.column_name === 'id' && (
+                            <span className="text-yellow-500 text-xs">🔑</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-blue-400 font-mono text-xs">
+                          {field.type_and_constraints}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-gray-300 text-xs">
+                          {field.description}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="bg-gray-800/50 rounded px-3 py-2 text-gray-300 font-mono text-xs">
+                          {getFieldValue(field.column_name) || (
+                            <span className="text-gray-500 italic">пусто</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -413,7 +263,7 @@ export default function TestTableComponent() {
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-green-400">{savedRecords.length}</div>
-          <div className="text-xs text-gray-400">Saved Records</div>
+          <div className="text-xs text-gray-400">Test Records</div>
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-yellow-400">
@@ -423,9 +273,9 @@ export default function TestTableComponent() {
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-purple-400">
-            {savedRecords.filter(r => r.side === 'SHORT').length}
+            {selectedRecord ? '1' : '0'}
           </div>
-          <div className="text-xs text-gray-400">Short Trades</div>
+          <div className="text-xs text-gray-400">Selected</div>
         </div>
       </div>
     </div>

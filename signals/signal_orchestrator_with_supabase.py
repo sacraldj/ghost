@@ -272,10 +272,23 @@ class SignalOrchestratorWithSupabase:
             return None
     
     async def _save_raw_signal_to_supabase(self, trader_id: str, raw_text: str):
-        """Сохранение сырого сигнала в Supabase"""
+        """Сохранение сырого сигнала в Supabase с дедупликацией"""
         try:
             if not self.supabase:
                 logger.warning("⚠️ Supabase not available, skipping raw signal save")
+                return
+            
+# Удаляем создание хеша, так как проверяем напрямую по тексту
+            
+            # Проверяем дубликаты по трейдеру и тексту за последние 2 часа
+            from datetime import timedelta
+            two_hours_ago = (datetime.now() - timedelta(hours=2)).isoformat()
+            
+            existing = self.supabase.table('signals_raw').select('id').eq('trader_id', trader_id).eq('text', raw_text.strip()).gte('created_at', two_hours_ago).limit(1).execute()
+            
+            if existing.data:
+                logger.info(f"🔄 Duplicate signal ignored from {trader_id} (text: {raw_text[:30]}...)")
+                self.stats['duplicates_skipped'] = self.stats.get('duplicates_skipped', 0) + 1
                 return
             
             # Подготавливаем данные для сохранения сырого сигнала
@@ -290,7 +303,8 @@ class SignalOrchestratorWithSupabase:
             result = self.supabase.table('signals_raw').insert(raw_data).execute()
             
             if result.data:
-                logger.debug(f"✅ Raw signal saved to Supabase from {trader_id}")
+                logger.info(f"✅ Raw signal saved to Supabase from {trader_id}")
+                self.stats['raw_signals_saved'] = self.stats.get('raw_signals_saved', 0) + 1
             else:
                 logger.error(f"❌ Failed to save raw signal to Supabase")
                 self.stats['supabase_errors'] += 1

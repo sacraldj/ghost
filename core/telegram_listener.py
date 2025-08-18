@@ -19,6 +19,9 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat
 
+# Настройка логирования
+logger = logging.getLogger(__name__)
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -234,8 +237,8 @@ class TelegramListener:
                                                     code = match.group(1)
                                                     logger.info(f"✅ Получен код из сообщения: {code}")
                                                     await session_client.disconnect()
-                            await temp_client.disconnect()
-                            return code
+                                                    await temp_client.disconnect()
+                                                    return code
                                     
                                     await asyncio.sleep(2)
                                     

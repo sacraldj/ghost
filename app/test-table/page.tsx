@@ -22,11 +22,11 @@ export default function TestTablePage() {
         <div className="bg-gradient-to-br from-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-6 border border-gray-800/50 shadow-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white mb-2">🧪 v_trades Schema</h1>
-              <p className="text-gray-400">Полная схема таблицы виртуальных сделок из Supabase</p>
+              <h1 className="text-2xl font-bold text-white mb-2">🧪 v_trades Test Table</h1>
+              <p className="text-gray-400">Просмотр записей из тестового Telegram канала</p>
             </div>
             <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg">
-              📊 Database Schema
+              📊 Test Data
             </div>
           </div>
         </div>
