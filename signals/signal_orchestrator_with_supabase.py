@@ -139,23 +139,24 @@ class SignalOrchestratorWithSupabase:
                 
             self.telegram_listener = TelegramListener(api_id, api_hash, phone)
             
-            # Добавляем каналы
+            # Добавляем каналы с правильными числовыми ID (НЕ username!)
             channels = [
-                ("@whalesguide", "whales_guide_main"),
-                ("@slivaeminfo", "2trade_premium"), 
-                ("@cryptohubvip", "crypto_hub_vip"),
-                ("@cryptoattack24", "cryptoattack24")
+                ("1288385100", "whales_guide_main", "@whalesguide"),
+                ("1915101334", "2trade_premium", "@slivaeminfo"), 
+                ("1263635145", "cryptoattack24", "@cryptoattack24"),
+                ("2974041293", "ghostsignaltest", "@ghostsignaltest")  # Тестовый канал для v_trades
             ]
             
-            for channel, trader_id in channels:
+            for channel_id, trader_id, username in channels:
                 from core.telegram_listener import ChannelConfig
                 config = ChannelConfig(
-                    channel_id=channel,
+                    channel_id=channel_id,  # Используем числовой ID!
                     channel_name=trader_id,
                     trader_id=trader_id,
                     is_active=True
                 )
                 self.telegram_listener.add_channel(config)
+                logger.info(f"Added channel: {trader_id} (Username: {username}, ID: {channel_id})")
             
             # Устанавливаем обработчик
             self.telegram_listener.set_message_handler(self._handle_telegram_message)
@@ -218,14 +219,29 @@ class SignalOrchestratorWithSupabase:
             best_parser = None
             best_parser_name = None
             
-            # Если есть подсказка источника, пробуем сначала его
-            if source_hint and source_hint in self.parsers:
+            # ПРИОРИТЕТ: Сначала ищем специальный парсер для этого трейдера
+            if trader_id in self.parsers:
+                parser = self.parsers[trader_id]
+                logger.info(f"🎯 Проверяем специализированный парсер для {trader_id}: {type(parser).__name__}")
+                
+                if parser.can_parse(raw_text):
+                    best_parser = parser
+                    best_parser_name = trader_id
+                    logger.info(f"✅ Используем специализированный парсер: {trader_id}")
+                else:
+                    logger.info(f"⚠️ Специализированный парсер {trader_id} не может обработать этот текст")
+            else:
+                logger.warning(f"⚠️ Специализированный парсер для {trader_id} не найден!")
+                logger.info(f"   Доступные парсеры: {list(self.parsers.keys())}")
+            
+            # Если специализированный не найден, пробуем подсказку источника
+            if not best_parser and source_hint and source_hint in self.parsers:
                 parser = self.parsers[source_hint]
                 if parser.can_parse(raw_text):
                     best_parser = parser
                     best_parser_name = source_hint
             
-            # Если подсказка не сработала, используем приоритетный порядок
+            # Если ничего не сработало, используем приоритетный порядок
             if not best_parser:
                 # Порядок приоритета парсеров
                 priority_order = ['whales_crypto_guide', 'cryptoattack24', 
@@ -285,14 +301,13 @@ class SignalOrchestratorWithSupabase:
             if not self.supabase:
                 logger.warning("⚠️ Supabase not available, skipping raw signal save")
                 return
-            
-# Удаляем создание хеша, так как проверяем напрямую по тексту
-            
+
             # Проверяем дубликаты по трейдеру и тексту за последние 2 часа
             from datetime import timedelta
             two_hours_ago = (datetime.now() - timedelta(hours=2)).isoformat()
-            
-            existing = self.supabase.table('signals_raw').select('id').eq('trader_id', trader_id).eq('text', raw_text.strip()).gte('created_at', two_hours_ago).limit(1).execute()
+
+            # Исправлено: убираем select('id') так как колонки id нет в таблице
+            existing = self.supabase.table('signals_raw').select('*').eq('trader_id', trader_id).eq('text', raw_text.strip()).gte('created_at', two_hours_ago).limit(1).execute()
             
             if existing.data:
                 logger.info(f"🔄 Duplicate signal ignored from {trader_id} (text: {raw_text[:30]}...)")
@@ -415,7 +430,7 @@ class SignalOrchestratorWithSupabase:
                 
                 # Торговые данные
                 'symbol': signal.symbol,
-                'side': signal.direction.value,
+                'side': 'LONG' if signal.direction.value in ['LONG', 'BUY'] else 'SHORT',
                 'entry_type': 'zone' if (hasattr(signal, 'entry_zone') and signal.entry_zone and len(signal.entry_zone) > 1) else 'exact',
                 'entry_min': entry_min,
                 'entry_max': entry_max,
@@ -528,6 +543,13 @@ class SignalOrchestratorWithSupabase:
                 'source_id': '-1001345678901',
                 'notes': 'VIP crypto signals with emoji formatting and quick calls',
                 'parsing_profile': 'crypto_hub_parser'
+            },
+            'ghostsignaltest': {
+                'name': 'Ghost Signal Test',
+                'source_handle': '@ghostsignaltest',
+                'source_id': '2974041293',
+                'notes': 'Test channel for signal parsing to v_trades table',
+                'parsing_profile': 'ghost_test_parser'
             }
         }
         

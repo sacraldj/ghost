@@ -159,6 +159,24 @@ ENV/
 env.bak/
 venv.bak/
 
+# Telegram Session Files
+*.session
+*.session-journal
+
+# Temporary test files
+test_*.py
+temp_*.py
+auto_*.py
+check_*.py
+get_*.py
+monitor_*.py
+verify_*.py
+smart_*.py
+direct_*.py
+find_*.py
+fully_*.py
+create_*.py
+
 # News Engine
 ghost_news.db
 *.log
@@ -167,3 +185,6 @@ all_api_keys.txt
 *.backup*
 .env.bak
 .env.local.backup*
+
+# Testing and debug files
+README_TESTING.md

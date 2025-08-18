@@ -8,7 +8,7 @@
       "description": "Premium crypto signals channel",
       "keywords_filter": [
         "longing",
-        "shorting", 
+        "shorting",
         "entry:",
         "targets:",
         "stoploss:",
@@ -23,6 +23,29 @@
       ],
       "source_type": "telegram",
       "parsing_profile": "crypto_hub_v1"
+    },
+    {
+      "channel_id": "2974041293",
+      "channel_name": "Ghost Signal Test",
+      "trader_id": "ghostsignaltest",
+      "is_active": true,
+      "description": "Тестовый канал для парсинга сигналов в v_trades",
+      "keywords_filter": [
+        "shorting",
+        "longing",
+        "entry:",
+        "targets:",
+        "stop-loss:",
+        "short (",
+        "long (",
+        "#"
+      ],
+      "exclude_keywords": [
+        "admin",
+        "maintenance"
+      ],
+      "source_type": "telegram",
+      "parsing_profile": "ghost_test_v1"
     },
     {
       "channel_id": "",
