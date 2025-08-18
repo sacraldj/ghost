@@ -18,31 +18,39 @@ class GhostTestParser(SignalParserBase):
     def __init__(self):
         super().__init__("ghost_signal_test")
         
-        # Паттерны для распознавания тестовых сигналов
+        # Паттерны для распознавания тестовых сигналов (на основе реального формата)
         self.format_patterns = [
-            r'(LONG|SHORT|BUY|SELL)',  # Направление сделки
-            r'(Entry|ENTRY):\s*[\$]?([0-9]+\.?[0-9]*)',  # Entry: $50000 или Entry: 50000
-            r'(Target|TARGET|TP|tp)s?:?\s*[\$]?([0-9]+\.?[0-9]*)',  # Target: $55000
-            r'(Stop|STOP|SL|sl):?\s*[\$]?([0-9]+\.?[0-9]*)',  # Stop: $48000
-            r'([A-Z]{3,10})(USDT?|USD)',  # BTCUSDT, ETHUSDT и т.д.
-            r'#[A-Z]{3,10}',  # #BTC, #ETH и т.д.
+            r'(LONG|SHORT|BUY|SELL|Longing|Shorting)',  # Направление сделки
+            r'(Entry|ENTRY):\s*[\$]?([0-9]+\.?[0-9]*)',  # Entry: $50000
+            r'(Target|TARGET|TP|tp)s?:?\s*[\$]?([0-9]+\.?[0-9]*)',  # Targets
+            r'(Stop|STOP|SL|sl|Stop-loss):?\s*[\$]?([0-9]+\.?[0-9]*)',  # Stop-loss
+            r'([A-Z]{3,10})(USDT?|USD)?',  # BTCUSDT, APT и т.д.
+            r'#[A-Z]{3,10}',  # #BTC, #APT и т.д.
             r'([0-9]+)x',  # Leverage: 10x, 15x и т.д.
+            r'TEST.*SIGNAL',  # TEST - SIGNAL
+            r'Forwarded from',  # Forwarded from канал
+            r'(Short|Long)\s*\([0-9x\-\s]+\)',  # Short (5x-10x)
         ]
         
         # Ключевые слова для дополнительного распознавания
         self.ghost_keywords = [
-            'ghost',
             'test',
-            'signal',
+            'signal', 
+            'forwarded from',
+            'shorting',
+            'longing',
             'entry',
-            'target',
-            'stop',
-            'long',
-            'short',
+            'targets',
+            'stop-loss',
+            'short (',
+            'long (',
             'leverage',
+            'whales crypto guide',
+            'apt',
             'btc',
             'eth',
-            'usdt'
+            'here',
+            'reason'
         ]
         
         # Список популярных торговых пар
@@ -50,34 +58,43 @@ class GhostTestParser(SignalParserBase):
             'BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT',
             'BNBUSDT', 'XRPUSDT', 'LTCUSDT', 'BCHUSDT', 'EOSUSDT',
             'TRXUSDT', 'XLMUSDT', 'ATOMUSDT', 'VETUSDT', 'FILUSDT',
-            'UNIUSDT', 'AVAXUSDT', 'MATICUSDT', 'ALGOUSDT', 'DOGEUSDT'
+            'UNIUSDT', 'AVAXUSDT', 'MATICUSDT', 'ALGOUSDT', 'DOGEUSDT',
+            'APTUSDT', 'SOLUSDT', 'NEARUSDT', 'FTMUSDT', 'SANDUSDT',
+            'MANAUSDT', 'AXSUSDT', 'ICPUSDT', 'THETAUSDT', 'MKRUSDT'
         ]
     
     def can_parse(self, text: str) -> bool:
-        """Проверка, подходит ли текст для этого парсера"""
-        if not text:
+        """Проверка, подходит ли текст для этого парсера (СТРОГАЯ фильтрация)"""
+        if not text or len(text.strip()) < 10:
             return False
             
         text_clean = self.clean_text(text).upper()
         
-        # Проверяем основные паттерны
-        matched_patterns = 0
-        for pattern in self.format_patterns:
-            if re.search(pattern, text_clean, re.IGNORECASE):
-                matched_patterns += 1
+        # ОБЯЗАТЕЛЬНЫЕ критерии для сигнала
+        has_direction = bool(re.search(r'\b(LONG|SHORT|BUY|SELL|LONGING|SHORTING)\b', text_clean))
+        has_symbol = any(symbol in text_clean for symbol in self.common_symbols) or bool(re.search(r'#[A-Z]{3,10}', text_clean))
+        has_price = bool(re.search(r'(ENTRY|TARGET|TP|STOP|SL).*\$?[0-9]+\.?[0-9]*', text_clean, re.IGNORECASE))
         
-        # Проверяем ключевые слова
-        keyword_matches = sum(1 for keyword in self.ghost_keywords 
-                             if keyword.upper() in text_clean)
+        # ИСКЛЮЧАЕМ очевидно НЕ сигналы
+        exclude_phrases = [
+            'ОК', 'ХОРОШО', 'ПОНЯТНО', 'СПАСИБО', 'ДА', 'НЕТ', 
+            'ПРИВЕТ', 'ПОКА', 'КАК ДЕЛА', 'ЧТО ТАМ',
+            'ВСЕ ЛИ ВЕРНО', 'ВНЕСЛОСЬ ЛИ', 'СМОТРИМ ТАБЛИЦУ',
+            'ТЕСТ', 'ПРОВЕРКА', 'АДМИН', 'СЮДА ПИСАТЬ'
+        ]
         
-        # Проверяем наличие торговых пар
-        symbol_matches = sum(1 for symbol in self.common_symbols 
-                           if symbol in text_clean)
+        for phrase in exclude_phrases:
+            if phrase in text_clean and len(text_clean) < 50:
+                return False
         
-        # Если найдено достаточно совпадений
-        return (matched_patterns >= 2 or 
-                keyword_matches >= 2 or 
-                symbol_matches >= 1)
+        # Сигнал должен иметь ВСЕ обязательные элементы
+        is_signal = has_direction and has_symbol and has_price
+        
+        # Дополнительная проверка на минимальную длину для сигналов
+        if is_signal and len(text_clean) < 30:
+            return False
+            
+        return is_signal
     
     def parse_signal(self, text: str, trader_id: str) -> Optional[ParsedSignal]:
         """Основная функция парсинга тестового сигнала"""
@@ -151,7 +168,7 @@ class GhostTestParser(SignalParserBase):
             match = re.search(pattern, text_upper)
             if match:
                 base = match.group(1)
-                if base in ['BTC', 'ETH', 'ADA', 'DOT', 'LINK', 'BNB', 'XRP', 'LTC', 'BCH', 'EOS', 'TRX', 'XLM', 'ATOM', 'VET', 'FIL', 'UNI', 'AVAX', 'MATIC', 'ALGO', 'DOGE']:
+                if base in ['BTC', 'ETH', 'ADA', 'DOT', 'LINK', 'BNB', 'XRP', 'LTC', 'BCH', 'EOS', 'TRX', 'XLM', 'ATOM', 'VET', 'FIL', 'UNI', 'AVAX', 'MATIC', 'ALGO', 'DOGE', 'APT', 'SOL', 'NEAR', 'FTM', 'SAND', 'MANA', 'AXS', 'ICP', 'THETA', 'MKR']:
                     return f"{base}USDT"
         
         return None
@@ -160,9 +177,10 @@ class GhostTestParser(SignalParserBase):
         """Извлекает направление сделки"""
         text_upper = text.upper()
         
-        if re.search(r'\b(LONG|BUY)\b', text_upper):
+        # Проверяем разные варианты формата
+        if re.search(r'\b(LONGING|LONG|BUY)\b', text_upper):
             return SignalDirection.LONG
-        elif re.search(r'\b(SHORT|SELL)\b', text_upper):
+        elif re.search(r'\b(SHORTING|SHORT|SELL)\b', text_upper):
             return SignalDirection.SHORT
         
         return None
@@ -204,27 +222,21 @@ class GhostTestParser(SignalParserBase):
         """Извлекает целевые цены"""
         targets = []
         
-        # Паттерны для целей
+        # Паттерны для целей (специально для формата со скриншота)
         target_patterns = [
             r'(?:TARGET|Target|target)\s*[12345]?:?\s*\$?([0-9]+\.?[0-9]*)',
             r'(?:TP|tp)\s*[12345]?:?\s*\$?([0-9]+\.?[0-9]*)',
-            r'(?:Targets?|TARGETS?):\s*([0-9,.\s\$]+)',  # Targets: 52000, 54000
+            r'(?:Targets?|TARGETS?):\s*(.+?)(?=\n|Stop|$)',  # Захватываем всю строку с целями до Stop или конца
         ]
         
         for pattern in target_patterns:
-            matches = re.findall(pattern, text)
+            matches = re.findall(pattern, text, re.MULTILINE | re.DOTALL)
             for match in matches:
-                if ',' in match:  # Несколько целей через запятую
-                    for price_str in match.split(','):
-                        try:
-                            price = float(price_str.strip().replace('$', ''))
-                            if price > 0:
-                                targets.append(price)
-                        except (ValueError, TypeError):
-                            continue
-                else:
+                # Ищем все цены в найденной строке
+                price_parts = re.findall(r'\$?([0-9]+\.?[0-9]*)', match)
+                for price_str in price_parts:
                     try:
-                        price = float(match.strip().replace('$', ''))
+                        price = float(price_str.strip())
                         if price > 0:
                             targets.append(price)
                     except (ValueError, TypeError):
@@ -238,6 +250,7 @@ class GhostTestParser(SignalParserBase):
             r'(?:STOP|Stop|stop|SL|sl):\s*\$?([0-9]+\.?[0-9]*)',
             r'(?:STOP|Stop|stop|SL|sl)\s*@\s*\$?([0-9]+\.?[0-9]*)',
             r'(?:STOP|Stop|stop|SL|sl)\s*LOSS:?\s*\$?([0-9]+\.?[0-9]*)',
+            r'(?:Stop-loss|STOP-LOSS|stop-loss):\s*\$?([0-9]+\.?[0-9]*)',  # Для формата "Stop-loss: $4.75"
         ]
         
         for pattern in stop_patterns:

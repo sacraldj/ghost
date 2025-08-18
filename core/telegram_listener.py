@@ -210,37 +210,82 @@ class TelegramListener:
                         if await session_client.is_user_authorized():
                             logger.info("📱 Используем существующую сессию для получения кода")
                             
-                            # Ждем код в течение 60 секунд
+                            # Ждем код в течение 120 секунд (увеличил время)
                             start_time = datetime.now()
-                            timeout = timedelta(seconds=60)
+                            timeout = timedelta(seconds=120)
                             
                             while datetime.now() - start_time < timeout:
                                 try:
-                                    # Получаем последние сообщения от Telegram (777000)
-                                    async for message in session_client.iter_messages(777000, limit=5):
-                                        if message.message and message.date > start_time - timedelta(minutes=2):
-                                            text = message.message
-                                            
-                                            # Ищем код в сообщении
-                                            code_patterns = [
-                                                r'Login code: (\d{5,6})',
-                                                r'Telegram code: (\d{5,6})',
-                                                r'code: (\d{5,6})',
-                                                r'код: (\d{5,6})',
-                                                r'Код: (\d{5,6})',
-                                                r'\b(\d{5,6})\b'  # Любые 5-6 цифр
-                                            ]
-                                            
-                                            for pattern in code_patterns:
-                                                match = re.search(pattern, text)
-                                                if match:
-                                                    code = match.group(1)
-                                                    logger.info(f"✅ Получен код из сообщения: {code}")
-                                                    await session_client.disconnect()
-                                                    await temp_client.disconnect()
-                                                    return code
+                                    # Получаем последние сообщения от Telegram (777000) и сохраненных сообщений
+                                    telegram_entity = None
+                                    try:
+                                        telegram_entity = await session_client.get_entity(777000)  # Telegram официальный
+                                    except:
+                                        try:
+                                            telegram_entity = await session_client.get_entity("Telegram")  # По имени
+                                        except:
+                                            pass
                                     
-                                    await asyncio.sleep(2)
+                                    if telegram_entity:
+                                        async for message in session_client.iter_messages(telegram_entity, limit=10):
+                                            if message.message and message.date > start_time - timedelta(minutes=5):
+                                                text = message.message
+                                                logger.info(f"🔍 Checking message: {text[:100]}...")
+                                                
+                                                # Ищем код в сообщении (расширенные паттерны)
+                                                code_patterns = [
+                                                    r'Login code: (\d{5,6})',
+                                                    r'Telegram code: (\d{5,6})', 
+                                                    r'Your code: (\d{5,6})',
+                                                    r'code: (\d{5,6})',
+                                                    r'код: (\d{5,6})',
+                                                    r'Код: (\d{5,6})',
+                                                    r'Ваш код: (\d{5,6})',
+                                                    r'входа: (\d{5,6})',
+                                                    r'авторизации: (\d{5,6})',
+                                                    r'(\d{5,6})',  # Любые 5-6 цифр в тексте
+                                                    r'\b(\d{5})\b',  # 5 цифр отдельно
+                                                    r'\b(\d{6})\b'   # 6 цифр отдельно  
+                                                ]
+                                                
+                                                for pattern in code_patterns:
+                                                    match = re.search(pattern, text)
+                                                    if match:
+                                                        code = match.group(1)
+                                                        logger.info(f"✅ Получен код из сообщения: {code}")
+                                                        await session_client.disconnect()
+                                                        await temp_client.disconnect()
+                                                        return code
+                                    else:
+                                        logger.warning("⚠️ Не удалось найти Telegram entity, пробуем альтернативный способ...")
+                                        
+                                        # Альтернативный способ - создаем новый временный клиент для авторизации
+                                        temp_auth_client = TelegramClient(':memory:', int(self.api_id), self.api_hash)
+                                        await temp_auth_client.connect()
+                                        
+                                        try:
+                                            # Отправляем код на этот номер и ждем в Saved Messages
+                                            async for dialog in temp_auth_client.iter_dialogs():
+                                                if hasattr(dialog.entity, 'username') and dialog.entity.username == 'telegram':
+                                                    async for message in temp_auth_client.iter_messages(dialog.entity, limit=5):
+                                                        if message.message and message.date > start_time - timedelta(minutes=5):
+                                                            text = message.message
+                                                            logger.info(f"🔍 Checking alt message: {text[:100]}...")
+                                                            
+                                                            for pattern in code_patterns:
+                                                                match = re.search(pattern, text)
+                                                                if match:
+                                                                    code = match.group(1)
+                                                                    logger.info(f"✅ Получен код альтернативным способом: {code}")
+                                                                    await temp_auth_client.disconnect()
+                                                                    await session_client.disconnect()
+                                                                    await temp_client.disconnect()
+                                                                    return code
+                                                    break
+                                        finally:
+                                            await temp_auth_client.disconnect()
+                                    
+                                    await asyncio.sleep(3)  # Увеличил интервал проверки
                                     
                                 except Exception as msg_error:
                                     logger.debug(f"Ошибка получения сообщения: {msg_error}")
@@ -257,9 +302,14 @@ class TelegramListener:
             except Exception as e:
                 logger.error(f"❌ Ошибка получения кода: {e}")
             
-            # Fallback - возвращаем пустую строку
+            # Fallback - проверяем переменную окружения
+            env_code = os.getenv('TELEGRAM_CODE')
+            if env_code and env_code.isdigit() and len(env_code) in [5, 6]:
+                logger.info(f"✅ Используем код из переменной окружения: {env_code}")
+                return env_code
+            
             logger.error("❌ Не удалось получить код автоматически")
-            logger.info("💡 Установите TELEGRAM_CODE в переменные окружения")
+            logger.info("💡 Установите TELEGRAM_CODE в переменные окружения Render")
             return ""
             
         except Exception as e:
