@@ -37,6 +37,9 @@ export default function GhostMainDashboard() {
   return (
     <GhostLayoutExact currentPage="traders">
       <div className="space-y-6">
+        {/* System Control Dashboard */}
+        <SystemControlDashboard />
+        
         {/* Enhanced Header Section with Mobile-First Design */}
         <div className="bg-gradient-to-br from-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-4 sm:p-6 border border-gray-800/50 shadow-2xl">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
