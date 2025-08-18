@@ -1,2 +1,82 @@
-# Не игнорируем API маршруты
+# Python Backend (остается на Render)
+*.py
+ghost_venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+
+# Python конфиги (для Render)
+config/*.py
+config/*.yaml
+config/sources/
+config/test_sources/
+
+# Большие архивы и бэкапы
+*.tar.gz
+*.zip
+ghost-system-complete.tar.gz
+ghost-project.zip
+
+# Большие логи (оставляем только logs/ для status API)
+*.log
+news_engine/*.log
+full_system.log
+ghost_system.log
+orchestrator.log
+system_debug.log
+
+# Session файлы Telegram (для Render)
+*.session
+ghost_session.session
+test_session.session
+
+# Базы данных (кроме ghost_news.db - нужна для /api/news)
+news_engine/ghost_news.db
+*.sqlite
+*.sqlite3
+
+# Docker файлы (для Render)
+Dockerfile.*
+docker-compose.yml
+Procfile
+railway.toml
+render.yaml
+
+# Python зависимости (для Render)
+requirements.txt
+
+# Скрипты и утилиты Python (для Render)  
+scripts/*.py
+signals/
+news_engine/
+engine/
+core/
+utils/
+telegram_parsers/
+
+# Документация и отчеты
+*.md
+!README.md
+
+# Остальные Python файлы
+apply_*.py
+check_*.py
+create_*.py
+get_*.py
+improve_*.py
+parse_*.py
+position_*.py
+price_*.py
+reaction_*.py
+setup_*.py
+start_*.py
+test_*.py
+*.plist
+
+# НЕ игнорировать Next.js API маршруты
 !/app/api/**
