@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import GhostLayoutExact from '@/app/components/GhostLayoutExact'
 import SystemControlDashboard from '@/app/components/SystemControlDashboard'
 import { 
-  CogIcon,
+  Cog6ToothIcon,
   ServerIcon,
   BellIcon,
   ShieldCheckIcon,
-  DatabaseIcon,
+  CircleStackIcon,
   KeyIcon
 } from '@heroicons/react/24/outline'
 
@@ -28,7 +28,7 @@ export default function SettingsPage() {
     { id: 'system', name: 'Управление системой', icon: ServerIcon },
     { id: 'notifications', name: 'Уведомления', icon: BellIcon },
     { id: 'security', name: 'Безопасность', icon: ShieldCheckIcon },
-    { id: 'database', name: 'База данных', icon: DatabaseIcon },
+    { id: 'database', name: 'База данных', icon: CircleStackIcon },
     { id: 'api', name: 'API ключи', icon: KeyIcon },
   ]
 
@@ -39,7 +39,7 @@ export default function SettingsPage() {
         <div className="bg-gradient-to-br from-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-6 border border-gray-800/50 shadow-2xl">
           <div className="flex items-center gap-4">
             <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-3 rounded-xl">
-              <CogIcon className="h-8 w-8 text-white" />
+              <Cog6ToothIcon className="h-8 w-8 text-white" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white">⚙️ НАСТРОЙКИ СИСТЕМЫ</h1>
