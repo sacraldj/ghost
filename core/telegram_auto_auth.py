@@ -64,7 +64,7 @@ class TelegramAutoAuth:
         # Настройки тайм-аутов
         self.code_timeout = 300  # 5 минут на получение кода
         self.sms_check_interval = 10  # Проверяем SMS каждые 10 секунд
-        self.max_code_attempts = 1  # ОДНА попытка автоввода кода (по требованию пользователя)
+        self.max_code_attempts = 2  # ДВЕ попытки автоввода кода (по требованию пользователя)
         
         # История попыток
         self.auth_attempts = []
@@ -924,7 +924,7 @@ class TelegramAutoAuth:
                     if os.path.exists(backup_file):
                     try:
                             os.remove(backup_file)
-                            logger.debug(f"🗑️ Удалена резервная копия: {backup_file}")
+                            logger.debug(f"🗑️ Удалена резервная копию: {backup_file}")
                     except:
                         pass
             

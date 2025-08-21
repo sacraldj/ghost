@@ -155,10 +155,10 @@ class SignalOrchestratorWithSupabase:
             
             # Добавляем каналы с правильными числовыми ID (НЕ username!)
             channels = [
-                ("1288385100", "whales_guide_main", "@whalesguide"),
-                ("1915101334", "2trade_premium", "@slivaeminfo"), 
-                ("1263635145", "cryptoattack24", "@cryptoattack24"),
-                ("2974041293", "ghostsignaltest", "@ghostsignaltest")  # Тестовый канал для v_trades
+                ("-1001288385100", "whales_guide_main", "@whalesguide"),
+                ("-1001915101334", "2trade_premium", "@slivaeminfo"), 
+                ("-1001263635145", "cryptoattack24", "@cryptoattack24"),
+                ("-1002974041293", "ghostsignaltest", "@ghostsignaltest")  # Тестовый канал для v_trades
             ]
             
             for channel_id, trader_id, username in channels:
@@ -655,7 +655,7 @@ class SignalOrchestratorWithSupabase:
             'ghostsignaltest': {
                 'name': 'Ghost Signal Test',
                 'source_handle': '@ghostsignaltest',
-                'source_id': '2974041293',
+                'source_id': '-1002974041293',
                 'notes': 'Test channel for signal parsing to v_trades table',
                 'parsing_profile': 'ghost_test_parser'
             }
