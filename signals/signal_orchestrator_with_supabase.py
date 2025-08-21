@@ -32,6 +32,13 @@ try:
 except ImportError:
     CRYPTOATTACK24_AVAILABLE = False
 
+# Импортируем виртуальный трейдинг
+try:
+    from core.virtual_position_manager import virtual_position_manager
+    VIRTUAL_TRADING_AVAILABLE = True
+except ImportError:
+    VIRTUAL_TRADING_AVAILABLE = False
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -122,6 +129,13 @@ class SignalOrchestratorWithSupabase:
             'supabase_errors': 0
         }
         
+        # Инициализация виртуального трейдинга
+        if VIRTUAL_TRADING_AVAILABLE:
+            virtual_position_manager.set_supabase(self.supabase)
+            logger.info("✅ Virtual trading integration enabled")
+        else:
+            logger.warning("⚠️ Virtual trading not available - install dependencies")
+        
         logger.info(f"✅ SignalOrchestrator with Supabase initialized with {len(self.parsers)} parsers")
     
     async def start_telegram_listening(self):
@@ -164,6 +178,11 @@ class SignalOrchestratorWithSupabase:
             # Запускаем
             await self.telegram_listener.initialize()
             asyncio.create_task(self.telegram_listener.start_listening())
+            
+            # Запускаем мониторинг виртуальных позиций
+            if VIRTUAL_TRADING_AVAILABLE:
+                await virtual_position_manager.start_monitoring()
+                logger.info("🔄 Virtual position monitoring started")
             
             logger.info("✅ Telegram listening started")
             return True
@@ -402,18 +421,68 @@ class SignalOrchestratorWithSupabase:
             # Генерируем уникальный ID для записи
             trade_id = str(uuid.uuid4())
             current_timestamp = datetime.now(timezone.utc)
-            posted_timestamp = int(current_timestamp.timestamp() * 1000)  # unix ms
+            posted_timestamp = int(current_timestamp.timestamp())  # unix секунды (для совместимости с фронтендом)
+            
+            # Для ghostsignaltest извлекаем точные значения из исходного текста
+            is_ghost_test = trader_id in ['ghostsignaltest', 'ghost_test']
             
             # Определяем цены входа
             entry_min = None
             entry_max = None
             
-            if hasattr(signal, 'entry_zone') and signal.entry_zone:
-                entry_min = float(min(signal.entry_zone))
-                entry_max = float(max(signal.entry_zone))
-            elif hasattr(signal, 'entry_single') and signal.entry_single:
-                entry_min = float(signal.entry_single)
-                entry_max = float(signal.entry_single)
+            if is_ghost_test and hasattr(self.parsers.get(trader_id), 'extract_entry_prices_exact'):
+                # Используем точные строковые значения для ghostsignaltest
+                parser = self.parsers.get(trader_id)
+                exact_entries = parser.extract_entry_prices_exact(raw_text)
+                if exact_entries:
+                    # Преобразуем в float для БД, но используем оригинальные строки с запятыми
+                    entry_values = [float(e.replace(',', '')) for e in exact_entries]
+                    entry_min = min(entry_values)
+                    entry_max = max(entry_values)
+            else:
+                # Стандартная логика для других парсеров
+                if hasattr(signal, 'entry_zone') and signal.entry_zone:
+                    entry_min = float(min(signal.entry_zone))
+                    entry_max = float(max(signal.entry_zone))
+                elif hasattr(signal, 'entry_single') and signal.entry_single:
+                    entry_min = float(signal.entry_single)
+                    entry_max = float(signal.entry_single)
+            
+            # Определяем цели с сохранением точности
+            tp1, tp2, tp3 = None, None, None
+            targets_json = '[]'
+            
+            if is_ghost_test and hasattr(self.parsers.get(trader_id), 'extract_targets_exact'):
+                # Используем точные строковые значения для ghostsignaltest
+                parser = self.parsers.get(trader_id)
+                exact_targets = parser.extract_targets_exact(raw_text)
+                if exact_targets:
+                    # Преобразуем в float для полей tp1, tp2, tp3
+                    target_values = [float(t.replace(',', '')) for t in exact_targets]
+                    tp1 = target_values[0] if len(target_values) > 0 else None
+                    tp2 = target_values[1] if len(target_values) > 1 else None
+                    tp3 = target_values[2] if len(target_values) > 2 else None
+                    # Сохраняем оригинальные строковые значения в JSON
+                    targets_json = str(exact_targets)
+            else:
+                # Стандартная логика для других парсеров
+                tp1 = float(signal.targets[0]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 0 else None
+                tp2 = float(signal.targets[1]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 1 else None
+                tp3 = float(signal.targets[2]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 2 else None
+                targets_json = str(signal.targets) if hasattr(signal, 'targets') and signal.targets else '[]'
+            
+            # Определяем стоп-лосс с сохранением точности
+            sl = None
+            
+            if is_ghost_test and hasattr(self.parsers.get(trader_id), 'extract_stop_loss_exact'):
+                # Используем точное строковое значение для ghostsignaltest
+                parser = self.parsers.get(trader_id)
+                exact_sl = parser.extract_stop_loss_exact(raw_text)
+                if exact_sl:
+                    sl = float(exact_sl.replace(',', ''))
+            else:
+                # Стандартная логика для других парсеров
+                sl = float(signal.stop_loss) if hasattr(signal, 'stop_loss') and signal.stop_loss else None
             
             # Подготавливаем данные для v_trades таблицы
             v_trades_data = {
@@ -425,24 +494,24 @@ class SignalOrchestratorWithSupabase:
                 'source_name': 'Ghost Signal Test',
                 'source_ref': f"tg://{trader_id}",
                 'original_text': raw_text,
-                'signal_reason': getattr(signal, 'reason', '') or '',
+                'signal_reason': self._get_validation_info(signal),
                 'posted_ts': posted_timestamp,
                 
                 # Торговые данные
                 'symbol': signal.symbol,
                 'side': 'LONG' if signal.direction.value in ['LONG', 'BUY'] else 'SHORT',
-                'entry_type': 'zone' if (hasattr(signal, 'entry_zone') and signal.entry_zone and len(signal.entry_zone) > 1) else 'exact',
+                'entry_type': 'zone' if (entry_min != entry_max and entry_max is not None) else 'exact',
                 'entry_min': entry_min,
                 'entry_max': entry_max,
                 
-                # Цели
-                'tp1': float(signal.targets[0]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 0 else None,
-                'tp2': float(signal.targets[1]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 1 else None,
-                'tp3': float(signal.targets[2]) if hasattr(signal, 'targets') and signal.targets and len(signal.targets) > 2 else None,
-                'targets_json': str(signal.targets) if hasattr(signal, 'targets') and signal.targets else '[]',
+                # Цели с сохранением точности
+                'tp1': tp1,
+                'tp2': tp2,
+                'tp3': tp3,
+                'targets_json': targets_json,
                 
-                # Стоп-лосс
-                'sl': float(signal.stop_loss) if hasattr(signal, 'stop_loss') and signal.stop_loss else None,
+                # Стоп-лосс с сохранением точности
+                'sl': sl,
                 'sl_type': 'hard',
                 
                 # Параметры торговли
@@ -455,8 +524,8 @@ class SignalOrchestratorWithSupabase:
                 'entry_timeout_sec': 172800,  # 48 часов
                 
                 # Статус
-                'was_fillable': True,  # По умолчанию считаем что вход достижим
-                'status': 'sim_open',  # Начальный статус симуляции
+                'was_fillable': getattr(signal, 'is_valid', True),  # Только валидные сигналы fillable
+                'status': 'cancelled' if not getattr(signal, 'is_valid', True) else 'sim_open',  # Невалидные помечаем как cancelled
                 
                 # Временные метки
                 'created_at': current_timestamp.isoformat(),
@@ -467,8 +536,34 @@ class SignalOrchestratorWithSupabase:
             result = self.supabase.table('v_trades').insert(v_trades_data).execute()
             
             if result.data:
-                logger.info(f"✅ Ghost test signal saved to v_trades: {signal.symbol} {signal.direction.value}")
+                is_valid = getattr(signal, 'is_valid', True)
+                status = 'cancelled' if not is_valid else 'sim_open'
+                validation_info = ""
+                
+                if not is_valid:
+                    validation_errors = getattr(signal, 'validation_errors', [])
+                    validation_info = f" | INVALID: {'; '.join(validation_errors[:2])}"  # Первые 2 ошибки
+                    
+                logger.info(f"✅ Ghost test signal saved to v_trades: {signal.symbol} {signal.direction.value} [{status}]{validation_info}")
                 self.stats['v_trades_saves'] = self.stats.get('v_trades_saves', 0) + 1
+                
+                # Создаем виртуальную позицию для валидных сигналов
+                if is_valid and VIRTUAL_TRADING_AVAILABLE:
+                    try:
+                        position_id = await virtual_position_manager.create_position_from_signal(
+                            signal=signal,
+                            v_trade_id=trade_id,
+                            position_size_usd=100.0,  # Размер позиции по умолчанию
+                            leverage=10  # Плечо по умолчанию
+                        )
+                        
+                        if position_id:
+                            logger.info(f"🚀 Virtual position created: {signal.symbol} (ID: {position_id})")
+                        else:
+                            logger.warning(f"⚠️ Failed to create virtual position for {signal.symbol}")
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Error creating virtual position: {e}")
             else:
                 logger.error(f"❌ Failed to save to v_trades table")
                 self.stats['supabase_errors'] += 1
@@ -476,6 +571,19 @@ class SignalOrchestratorWithSupabase:
         except Exception as e:
             logger.error(f"❌ Failed to save to v_trades table: {e}")
             self.stats['supabase_errors'] += 1
+    
+    def _get_validation_info(self, signal) -> str:
+        """Получает информацию о валидации сигнала для записи в базу"""
+        # Проверяем наличие информации о валидности
+        if not hasattr(signal, 'is_valid') or signal.is_valid:
+            return 'Valid signal'  # Валидный сигнал
+        
+        # Для невалидных сигналов записываем ошибки
+        validation_errors = getattr(signal, 'validation_errors', [])
+        if validation_errors:
+            return f"INVALID_SIGNAL: {'; '.join(validation_errors)}"
+        else:
+            return 'INVALID_SIGNAL: Unknown validation error'
     
     async def get_stats(self) -> Dict[str, Any]:
         """Получение статистики работы оркестратора"""

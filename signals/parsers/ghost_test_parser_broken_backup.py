@@ -249,6 +249,8 @@ class GhostTestParser(SignalParserBase):
                                     prices.append(price)
                             except (ValueError, TypeError):
                                 continue
+                        except (ValueError, TypeError):
+                            continue
                 else:
                     try:
                         clean_price_str = match.replace(',', '')

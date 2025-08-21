@@ -11,6 +11,10 @@ from typing import Optional, Dict, Any, List
 from PIL import Image
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

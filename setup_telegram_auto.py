@@ -7,6 +7,7 @@ import os
 import asyncio
 import logging
 import re
+from datetime import datetime
 from dotenv import load_dotenv, set_key
 
 # Загружаем переменные окружения
@@ -28,11 +29,44 @@ class TelegramAutoSetup:
         self.api_hash = None
         self.phone = None
         self.session_name = 'ghost_session'
+        self.auto_code_attempted = False  # Флаг для отслеживания попыток автовода
+        self.auto_code_flag_file = '.telegram_auto_code_attempted'  # Файл для сохранения состояния
+        
+    def check_auto_code_attempted(self):
+        """Проверка, был ли уже совершен автовод кода"""
+        return os.path.exists(self.auto_code_flag_file)
+    
+    def mark_auto_code_attempted(self):
+        """Отметка, что автовод был попыткой"""
+        try:
+            with open(self.auto_code_flag_file, 'w') as f:
+                f.write(f"auto_code_attempted_at: {datetime.now().isoformat()}\n")
+                f.write(f"phone: {self.phone}\n")
+            logger.info("🔐 Автовод кода помечен как выполненный")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось сохранить флаг автовода: {e}")
+    
+    def reset_auto_code_flag(self):
+        """Сброс флага автовода (для повторной попытки)"""
+        try:
+            if os.path.exists(self.auto_code_flag_file):
+                os.remove(self.auto_code_flag_file)
+                logger.info("🔄 Флаг автовода сброшен")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось сбросить флаг автовода: {e}")
         
     async def setup(self):
         """Основной процесс настройки"""
         print("🚀 АВТОМАТИЧЕСКАЯ НАСТРОЙКА TELEGRAM")
         print("=" * 50)
+        
+        # Проверяем флаг автовода
+        if self.check_auto_code_attempted():
+            print("ℹ️ Обнаружен флаг использования автовода кода")
+            reset_choice = input("Сбросить флаг и разрешить автовод? (y/n): ").strip().lower()
+            if reset_choice in ['y', 'yes', 'да']:
+                self.reset_auto_code_flag()
+                print("✅ Флаг автовода сброшен")
         
         # 1. Получаем API ключи
         if not await self.get_api_credentials():
@@ -139,11 +173,24 @@ class TelegramAutoSetup:
                 print("⏳ Ждите SMS с кодом...")
                 print("💡 Код также может прийти в Telegram от @777000")
                 
-                # Автоматическое получение кода
-                code = await self.get_auth_code(client)
+                # Проверяем, можно ли использовать автовод
+                code = None
+                if not self.check_auto_code_attempted():
+                    print("🔍 Попытка автоматического получения кода (первый раз)...")
+                    code = await self.get_auth_code(client)
+                    
+                    # Помечаем, что автовод был попыткой
+                    self.mark_auto_code_attempted()
+                    
+                    if not code:
+                        print("⚠️ Автоматическое получение кода не удалось")
+                else:
+                    print("ℹ️ Автовод кода уже использовался ранее, переход к ручному вводу")
                 
                 if not code:
-                    # Fallback на ручной ввод
+                    # Ручной ввод кода
+                    print("\n🖐️ РУЧНОЙ ВВОД КОДА")
+                    print("-" * 30)
                     code = input("📱 Введите код из SMS/Telegram: ").strip()
                 
                 if code:
@@ -185,9 +232,10 @@ class TelegramAutoSetup:
             return False
     
     async def get_auth_code(self, client):
-        """Автоматическое получение кода авторизации"""
+        """Автоматическое получение кода авторизации (используется только один раз)"""
         try:
-            print("🔍 Попытка автоматического получения кода...")
+            print("🔍 Единственная попытка автоматического получения кода...")
+            print("⚠️ После этого автовод будет отключен для этого аккаунта")
             
             # Ждем код в течение 60 секунд
             for attempt in range(60):

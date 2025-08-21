@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import SignalChart from './SignalChart'
 
 interface ColumnSchema {
   column_name: string
@@ -78,31 +79,70 @@ const tableSchema: ColumnSchema[] = [
 
 export default function TestTableComponent() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
+  const [selectedSignalForChart, setSelectedSignalForChart] = useState<string | null>(null)
   const [savedRecords, setSavedRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAutoRefresh, setIsAutoRefresh] = useState(true)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   // Загружаем сохраненные записи при инициализации
   useEffect(() => {
     fetchSavedRecords()
   }, [])
 
-  const fetchSavedRecords = async () => {
+  // Автообновление каждые 30 секунд
+  useEffect(() => {
+    if (!isAutoRefresh) return
+
+    const interval = setInterval(() => {
+      fetchSavedRecords(true) // true = silent refresh
+    }, 30000) // 30 секунд
+
+    return () => clearInterval(interval)
+  }, [isAutoRefresh])
+
+  const fetchSavedRecords = async (silent: boolean = false) => {
     try {
-      setLoading(true)
+      if (!silent) {
+        setLoading(true)
+      } else {
+        setRefreshing(true)
+      }
+      
       const response = await fetch('/api/test-table')
       const result = await response.json()
       if (result.data) {
         setSavedRecords(result.data)
+        setLastRefresh(new Date())
       }
     } catch (error) {
       console.error('Error fetching saved records:', error)
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      } else {
+        setRefreshing(false)
+      }
     }
+  }
+
+  const handleManualRefresh = () => {
+    fetchSavedRecords(false)
   }
 
   const handleRecordClick = (record: any) => {
     setSelectedRecord(record)
+    
+    // Автоматически показываем график для выбранного сигнала
+    if (record && record.id) {
+      setSelectedSignalForChart(record.id)
+    }
+  }
+
+  const handleTrackingToggle = (signalId: string, isTracking: boolean) => {
+    // Обновляем данные таблицы при изменении статуса отслеживания
+    fetchSavedRecords()
   }
 
   const getFieldValue = (fieldName: string) => {
@@ -116,22 +156,93 @@ export default function TestTableComponent() {
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl p-4 border border-gray-800/50">
-        <h2 className="text-lg font-semibold text-white">🧪 v_trades Viewer</h2>
-        <p className="text-gray-400 text-sm mt-1">
-          {selectedRecord 
-            ? `Просмотр записи: ${selectedRecord.id?.substring(0, 8) || 'N/A'}...` 
-            : 'Выберите запись из списка для просмотра полей'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">🧪 v_trades Viewer</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              {selectedRecord 
+                ? `Просмотр записи: ${selectedRecord.id?.substring(0, 8) || 'N/A'}...` 
+                : 'Выберите запись из списка для просмотра графика и полей'}
+            </p>
+            {/* Индикатор обновления */}
+            <div className="flex items-center gap-3 mt-2">
+              {lastRefresh && (
+                <div className="text-xs text-gray-500">
+                  Обновлено: {lastRefresh.toLocaleTimeString('ru-RU')}
+                </div>
+              )}
+              {refreshing && (
+                <div className="flex items-center gap-1 text-xs text-blue-400">
+                  <div className="animate-spin w-3 h-3 border border-blue-400/30 border-t-blue-400 rounded-full"></div>
+                  Обновление...
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Кнопки управления обновлением */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleManualRefresh}
+                disabled={loading || refreshing}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <div className={`w-4 h-4 ${(loading || refreshing) ? 'animate-spin' : ''}`}>
+                  🔄
+                </div>
+                Обновить
+              </button>
+              
+              <button
+                onClick={() => setIsAutoRefresh(!isAutoRefresh)}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  isAutoRefresh 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
+                }`}
+              >
+                <div className="w-4 h-4">
+                  {isAutoRefresh ? '⏰' : '⏸️'}
+                </div>
+                {isAutoRefresh ? 'Авто (30с)' : 'Выкл'}
+              </button>
+            </div>
+
+            {/* График индикатор */}
+            {selectedSignalForChart && (
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg">
+                📊 График: {selectedRecord?.symbol || 'Unknown'}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Interactive Signal Chart */}
+      <SignalChart 
+        signalId={selectedSignalForChart} 
+        onTrackingToggle={handleTrackingToggle}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Records List */}
         <div className="lg:col-span-1">
           <div className="bg-black rounded-2xl border border-gray-800 overflow-hidden">
             <div className="p-4 bg-gray-900/50 border-b border-gray-800">
-              <h3 className="text-sm font-medium text-gray-300">📋 Записи v_trades</h3>
-              <div className="text-xs text-gray-500 mt-1">
-                {loading ? 'Загрузка...' : `${savedRecords.length} записей`}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-300">📋 Записи v_trades</h3>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {loading ? 'Загрузка...' : `${savedRecords.length} записей`}
+                  </div>
+                </div>
+                {refreshing && !loading && (
+                  <div className="flex items-center gap-1 text-xs text-blue-400">
+                    <div className="animate-spin w-3 h-3 border border-blue-400/30 border-t-blue-400 rounded-full"></div>
+                    Обновление
+                  </div>
+                )}
               </div>
             </div>
             
@@ -150,17 +261,26 @@ export default function TestTableComponent() {
                     <div
                       key={record.id || index}
                       onClick={() => handleRecordClick(record)}
-                      className={`p-3 cursor-pointer hover:bg-gray-900/30 transition-colors ${
+                      className={`p-3 cursor-pointer hover:bg-gray-900/30 transition-colors relative ${
                         selectedRecord?.id === record.id ? 'bg-blue-900/30 border-l-2 border-l-blue-500' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-blue-400 font-medium text-sm">
-                            {record.symbol || 'N/A'}
+                        <div className="flex items-center space-x-3">
+                          {/* Номер сигнала */}
+                          <div className="flex-shrink-0">
+                            <span className="text-gray-500 text-xs font-mono leading-none">
+                              {String(index + 1).padStart(3, '0')}
+                            </span>
                           </div>
-                          <div className="text-gray-400 text-xs">
-                            {record.id?.substring(0, 12) || 'N/A'}...
+                          {/* Основная информация */}
+                          <div>
+                            <div className="text-blue-400 font-medium text-sm">
+                              {record.symbol || 'N/A'}
+                            </div>
+                            <div className="text-gray-400 text-xs">
+                              {record.id?.substring(0, 12) || 'N/A'}...
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -178,6 +298,15 @@ export default function TestTableComponent() {
                             }
                           </div>
                         </div>
+                        
+                        {/* Chart indicator */}
+                        {selectedRecord?.id === record.id && (
+                          <div className="absolute right-2 top-2">
+                            <div className="bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded text-xs">
+                              📊
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -256,7 +385,7 @@ export default function TestTableComponent() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-blue-400">{tableSchema.length}</div>
           <div className="text-xs text-gray-400">Total Fields</div>
@@ -276,6 +405,14 @@ export default function TestTableComponent() {
             {selectedRecord ? '1' : '0'}
           </div>
           <div className="text-xs text-gray-400">Selected</div>
+        </div>
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
+          <div className="text-2xl font-bold text-cyan-400">
+            {isAutoRefresh ? '⏰' : '⏸️'}
+          </div>
+          <div className="text-xs text-gray-400">
+            {isAutoRefresh ? 'Авто обновление' : 'Ручное обновление'}
+          </div>
         </div>
       </div>
     </div>
