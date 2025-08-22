@@ -3,6 +3,7 @@
 import { ReactNode, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import SystemStatusIndicator from '@/app/components/SystemStatusIndicator'
 import { 
   LayoutDashboard, 
   Users, 
@@ -135,17 +136,7 @@ export default function GhostLayoutExact({ children, currentPage }: GhostLayoutE
           
           {/* Enhanced System Status */}
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-600/10 via-green-600/10 to-teal-600/10 border border-emerald-500/20 rounded-xl backdrop-blur-sm">
-              <div className="relative">
-                <div className="h-3 w-3 bg-emerald-500 rounded-full animate-pulse shadow-lg shadow-emerald-500/50" />
-                <div className="absolute inset-0 h-3 w-3 bg-emerald-400 rounded-full animate-ping opacity-75" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-emerald-400">System Online</span>
-                <span className="text-xs text-gray-500">All services operational</span>
-              </div>
-              <Wifi className="ml-auto w-4 h-4 text-emerald-400" />
-            </div>
+            <SystemStatusIndicator className="w-full" />
             
             {/* Time display */}
             <div className="text-center">
@@ -230,17 +221,7 @@ export default function GhostLayoutExact({ children, currentPage }: GhostLayoutE
           
           {/* Mobile System Status */}
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-600/10 to-teal-600/10 border border-emerald-500/20 rounded-xl">
-              <div className="relative">
-                <div className="h-3 w-3 bg-emerald-500 rounded-full animate-pulse" />
-                <div className="absolute inset-0 h-3 w-3 bg-emerald-400 rounded-full animate-ping opacity-75" />
-              </div>
-              <div className="flex flex-col flex-1">
-                <span className="text-sm font-semibold text-emerald-400">System Online</span>
-                <span className="text-xs text-gray-500">All services operational</span>
-              </div>
-              <Wifi className="w-5 h-5 text-emerald-400" />
-            </div>
+            <SystemStatusIndicator className="w-full" />
           </div>
         </div>
       </div>

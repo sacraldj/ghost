@@ -915,19 +915,18 @@ class TelegramAutoAuth:
             
             if auth_success:
                 # Если авторизация прошла успешно, ТОГДА удаляем старые файлы
-            for ext in ['.session', '.session-journal']:
+                for ext in ['.session', '.session-journal']:
                     old_session_file = f'{session_path}_old{ext}'
-                session_file = f'{session_path}{ext}'
+                    session_file = f'{session_path}{ext}'
                     backup_file = f'{backup_session}{ext}'
                     
                     # Удаляем резервную копию
                     if os.path.exists(backup_file):
-                    try:
+                        try:
                             os.remove(backup_file)
                             logger.debug(f"🗑️ Удалена резервная копию: {backup_file}")
-                    except:
-                        pass
-            
+                        except:
+                            pass
                 logger.info("✅ Авторизация успешна, старые сессии очищены")
                 
             if auth_success:

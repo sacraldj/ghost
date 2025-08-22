@@ -3,18 +3,22 @@
 import { useState, useEffect } from 'react'
 import GhostLayoutExact from '@/app/components/GhostLayoutExact'
 import SystemControlDashboard from '@/app/components/SystemControlDashboard'
+import SystemOverviewDashboard from '@/app/components/SystemOverviewDashboard'
+import RenderStatusDashboard from '@/app/components/RenderStatusDashboard'
 import { 
   Cog6ToothIcon,
   ServerIcon,
   BellIcon,
   ShieldCheckIcon,
   CircleStackIcon,
-  KeyIcon
+  KeyIcon,
+  ChartBarIcon,
+  CloudIcon
 } from '@heroicons/react/24/outline'
 
 export default function SettingsPage() {
   const [isClient, setIsClient] = useState(false)
-  const [activeTab, setActiveTab] = useState('system')
+  const [activeTab, setActiveTab] = useState('overview')
 
   useEffect(() => {
     setIsClient(true)
@@ -25,7 +29,9 @@ export default function SettingsPage() {
   }
 
   const tabs = [
+    { id: 'overview', name: 'Обзор системы', icon: ChartBarIcon },
     { id: 'system', name: 'Управление системой', icon: ServerIcon },
+    { id: 'render', name: 'Render мониторинг', icon: CloudIcon },
     { id: 'notifications', name: 'Уведомления', icon: BellIcon },
     { id: 'security', name: 'Безопасность', icon: ShieldCheckIcon },
     { id: 'database', name: 'База данных', icon: CircleStackIcon },
@@ -73,6 +79,12 @@ export default function SettingsPage() {
 
         {/* Tab Content */}
         <div className="space-y-6">
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <SystemOverviewDashboard />
+            </div>
+          )}
+
           {activeTab === 'system' && (
             <div className="space-y-6">
               <SystemControlDashboard />
@@ -116,6 +128,69 @@ export default function SettingsPage() {
                       </label>
                     </div>
                     <p className="text-sm text-gray-400">Автоматически перезапускать при критических ошибках</p>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'render' && (
+            <div className="space-y-6">
+              <RenderStatusDashboard />
+              
+              {/* Additional Render Settings */}
+              <div className="bg-gradient-to-br from-gray-900/90 to-gray-950/90 backdrop-blur-sm rounded-2xl p-6 border border-gray-800/50 shadow-2xl">
+                <h3 className="text-xl font-semibold text-white mb-4">☁️ Настройки Render</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Auto Deploy */}
+                  <div className="p-4 rounded-xl bg-gray-800/30 border border-gray-700/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-semibold">Автоматический деплой</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" defaultChecked />
+                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-sm text-gray-400">Автоматически деплоить при push в main ветку</p>
+                  </div>
+
+                  {/* Health Check */}
+                  <div className="p-4 rounded-xl bg-gray-800/30 border border-gray-700/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-semibold">Health Check</span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" defaultChecked />
+                        <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    <p className="text-sm text-gray-400">Мониторинг /health endpoint на Render</p>
+                  </div>
+
+                  {/* Environment Variables */}
+                  <div className="md:col-span-2">
+                    <div className="p-4 rounded-xl bg-gray-800/30 border border-gray-700/50">
+                      <h4 className="text-white font-semibold mb-3">🔑 Environment Variables Status</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        <div className="flex items-center gap-2 p-2 rounded bg-green-900/30">
+                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                          <span className="text-sm text-green-300">TELEGRAM_API_ID</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded bg-green-900/30">
+                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                          <span className="text-sm text-green-300">SUPABASE_URL</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded bg-yellow-900/30">
+                          <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                          <span className="text-sm text-yellow-300">RENDER_API_KEY</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded bg-gray-800/50">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                          <span className="text-sm text-gray-400">REDIS_URL</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                 </div>
