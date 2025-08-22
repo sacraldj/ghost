@@ -17,7 +17,7 @@ interface SystemOverviewData {
   services: {
     telegram: {
       status: 'running' | 'stopped' | 'error'
-      health: 'healthy' | 'warning' | 'critical'
+      health: 'healthy' | 'warning' | 'critical' | 'unknown'
       uptime: number
       last_signal: string | null
     }
