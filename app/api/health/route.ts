@@ -39,8 +39,7 @@ export async function GET(request: NextRequest) {
       if (error) {
         healthStatus.checks.supabase = {
           status: 'error',
-          message: `Supabase error: ${error.message}`,
-          details: error
+          message: `Supabase error: ${error.message}`
         }
         healthStatus.status = 'degraded'
       } else {

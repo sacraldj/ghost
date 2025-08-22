@@ -140,7 +140,7 @@ export default function TestTableComponent() {
     }
   }
 
-  const handleTrackingToggle = (signalId: string, isTracking: boolean) => {
+  const handleTrackingToggle = (isTracking: boolean) => {
     // Обновляем данные таблицы при изменении статуса отслеживания
     fetchSavedRecords()
   }
@@ -285,13 +285,13 @@ export default function TestTableComponent() {
                         </div>
                         <div className="text-right">
                           <div className="flex flex-col gap-1">
-                            <div className={`px-2 py-1 rounded text-xs font-medium ${
-                              record.side === 'LONG' 
-                                ? 'bg-green-900/50 text-green-400' 
-                                : 'bg-red-900/50 text-red-400'
-                            }`}>
-                              {record.side || 'N/A'}
-                            </div>
+                          <div className={`px-2 py-1 rounded text-xs font-medium ${
+                            record.side === 'LONG' 
+                              ? 'bg-green-900/50 text-green-400' 
+                              : 'bg-red-900/50 text-red-400'
+                          }`}>
+                            {record.side || 'N/A'}
+                          </div>
                             
                             {/* Status indicator */}
                             <div className={`px-2 py-1 rounded text-xs font-medium text-center ${
@@ -303,10 +303,10 @@ export default function TestTableComponent() {
                             </div>
                             
                             <div className="text-gray-500 text-xs">
-                              {record.created_at 
-                                ? new Date(record.created_at).toLocaleDateString('ru-RU') 
-                                : 'N/A'
-                              }
+                            {record.created_at 
+                              ? new Date(record.created_at).toLocaleDateString('ru-RU') 
+                              : 'N/A'
+                            }
                             </div>
                           </div>
                         </div>

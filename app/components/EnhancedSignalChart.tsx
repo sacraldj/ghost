@@ -1,11 +1,48 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Eye, EyeOff, BarChart3, TrendingUp, Clock, Layers } from 'lucide-react'
+
+// Простые UI компоненты без shadcn/ui
+const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 ${className}`}>
+    {children}
+  </div>
+)
+
+const CardHeader = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  <div className={`p-6 border-b border-gray-200 dark:border-gray-700 ${className}`}>
+    {children}
+  </div>
+)
+
+const CardContent = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  <div className={`p-6 ${className}`}>
+    {children}
+  </div>
+)
+
+const CardTitle = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  <h3 className={`text-2xl font-semibold leading-none tracking-tight ${className}`}>
+    {children}
+  </h3>
+)
+
+const Badge = ({ children, variant = "default", className = "" }: { 
+  children: React.ReactNode, 
+  variant?: "default" | "secondary" | "outline", 
+  className?: string 
+}) => {
+  const variants = {
+    default: "bg-blue-600 text-white",
+    secondary: "bg-gray-600 text-white",
+    outline: "border border-gray-400 bg-transparent text-gray-700 dark:text-gray-300"
+  }
+  return (
+    <div className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${variants[variant]} ${className}`}>
+      {children}
+    </div>
+  )
+}
 
 interface CandleData {
   timestamp: number
@@ -261,20 +298,18 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
+            📊
             {signalData ? `${signalData.symbol} ${signalData.side}` : `Signal #${signalId}`}
           </CardTitle>
           
           <div className="flex items-center gap-2">
-            <Badge variant={isRealtime ? "default" : "secondary"} className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {isRealtime ? 'Live' : 'Static'}
+            <Badge variant={isRealtime ? "default" : "secondary"} className="flex items-center gap-1 bg-green-600 text-white">
+              ⏱️ {isRealtime ? 'Live' : 'Static'}
             </Badge>
             
             {currentPrice && (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                ${formatPrice(currentPrice)}
+              <Badge variant="outline" className="flex items-center gap-1 border-yellow-400 text-yellow-400">
+                💹 ${formatPrice(currentPrice)}
               </Badge>
             )}
           </div>
@@ -317,9 +352,9 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
               
               <button
                 onClick={() => setIsRealtime(!isRealtime)}
-                className="p-2 rounded-lg bg-gray-900/20 border border-gray-500/30 hover:bg-gray-900/40 transition-colors"
+                className="p-2 rounded-lg bg-gray-900/20 border border-gray-500/30 hover:bg-gray-900/40 transition-colors text-gray-400"
               >
-                <Clock className="h-4 w-4 text-gray-400" />
+                ⏰
               </button>
             </div>
           </div>
