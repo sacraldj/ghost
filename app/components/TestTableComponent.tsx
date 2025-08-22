@@ -270,7 +270,7 @@ export default function TestTableComponent() {
                           {/* Номер сигнала */}
                           <div className="flex-shrink-0">
                             <span className="text-gray-500 text-xs font-mono leading-none">
-                              {String(index + 1).padStart(3, '0')}
+                              {String(savedRecords.length - index).padStart(3, '0')}
                             </span>
                           </div>
                           {/* Основная информация */}

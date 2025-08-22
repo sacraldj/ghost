@@ -38,11 +38,16 @@
         "stop-loss:",
         "short (",
         "long (",
-        "#"
+        "#",
+        "btc",
+        "eth",
+        "usdt",
+        "buy",
+        "sell"
       ],
       "exclude_keywords": [
-        "admin",
-        "maintenance"
+        "admin_command",
+        "system_maintenance"
       ],
       "source_type": "telegram",
       "parsing_profile": "ghost_test_v1"
