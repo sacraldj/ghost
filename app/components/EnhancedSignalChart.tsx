@@ -72,10 +72,12 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
   const [selectedTimeframe, setSelectedTimeframe] = useState('5m')
   const [isRealtime, setIsRealtime] = useState(true)
   
-  // Chart dimensions
-  const chartWidth = 800
-  const chartHeight = 400
-  const padding = 40
+  // Chart dimensions and zoom
+  const [zoomLevel, setZoomLevel] = useState(1)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const chartWidth = 1000  // Увеличиваем размер для лучшего качества
+  const chartHeight = 500  // Увеличиваем высоту
+  const padding = 50
 
   // Fetch chart data
   const fetchChartData = async () => {
@@ -278,56 +280,118 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
           </div>
         </div>
 
-        {/* Chart Controls */}
-        <div className="flex flex-wrap items-center gap-4 mt-4">
-          {/* Timeframe Selection */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">Timeframe:</label>
-            <div className="flex flex-wrap gap-1">
-              {TIMEFRAME_OPTIONS.map((tf) => (
-                <Button
-                  key={tf.value}
-                  variant={selectedTimeframe === tf.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedTimeframe(tf.value)}
-                >
-                  {tf.label}
-                </Button>
-              ))}
+                  {/* Professional Chart Controls - Bybit Style */}
+        <div className="flex flex-col gap-4 mt-4">
+          
+          {/* Top Row - Timeframe Selection (Bybit Style) */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Timeframe</span>
+              <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 gap-1">
+                {TIMEFRAME_OPTIONS.map((tf) => (
+                  <button
+                    key={tf.value}
+                    onClick={() => setSelectedTimeframe(tf.value)}
+                    className={`
+                      px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200
+                      ${selectedTimeframe === tf.value 
+                        ? 'bg-blue-500 text-white shadow-sm' 
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }
+                    `}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Status Indicator */}
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${isRealtime ? 'bg-green-900/20 border border-green-500/30' : 'bg-gray-900/20 border border-gray-500/30'}`}>
+                <div className={`w-2 h-2 rounded-full ${isRealtime ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                <span className={`text-sm font-medium ${isRealtime ? 'text-green-400' : 'text-gray-400'}`}>
+                  {isRealtime ? 'LIVE' : 'STATIC'}
+                </span>
+              </div>
+              
+              <button
+                onClick={() => setIsRealtime(!isRealtime)}
+                className="p-2 rounded-lg bg-gray-900/20 border border-gray-500/30 hover:bg-gray-900/40 transition-colors"
+              >
+                <Clock className="h-4 w-4 text-gray-400" />
+              </button>
             </div>
           </div>
 
-          {/* Layer Controls */}
-          <div className="flex items-center gap-4 ml-auto">
-            <Button
-              variant={showCandlesLayer ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowCandlesLayer(!showCandlesLayer)}
-              className="flex items-center gap-2"
-            >
-              {showCandlesLayer ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              Candles
-            </Button>
-            
-            <Button
-              variant={showTradingLayer ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowTradingLayer(!showTradingLayer)}
-              className="flex items-center gap-2"
-            >
-              {showTradingLayer ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              Trading
-            </Button>
-            
-            <Button
-              variant={isRealtime ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsRealtime(!isRealtime)}
-              className="flex items-center gap-2"
-            >
-              <Clock className="h-4 w-4" />
-              {isRealtime ? 'Live' : 'Paused'}
-            </Button>
+          {/* Bottom Row - Layer Controls (Professional Toggle Style) */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Chart Layers</span>
+              
+              {/* Candles Layer Toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowCandlesLayer(!showCandlesLayer)}
+                  className={`
+                    relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                    ${showCandlesLayer ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}
+                  `}
+                >
+                  <span className={`
+                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                    ${showCandlesLayer ? 'translate-x-6' : 'translate-x-1'}
+                  `} />
+                </button>
+                <span className={`text-sm font-medium ${showCandlesLayer ? 'text-blue-400' : 'text-gray-500'}`}>
+                  📊 Candles
+                </span>
+              </div>
+
+              {/* Trading Layer Toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowTradingLayer(!showTradingLayer)}
+                  className={`
+                    relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                    ${showTradingLayer ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'}
+                  `}
+                >
+                  <span className={`
+                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                    ${showTradingLayer ? 'translate-x-6' : 'translate-x-1'}
+                  `} />
+                </button>
+                <span className={`text-sm font-medium ${showTradingLayer ? 'text-green-400' : 'text-gray-500'}`}>
+                  🎯 Signals
+                </span>
+              </div>
+            </div>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Zoom</span>
+              <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                <button
+                  onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.25))}
+                  className="px-2 py-1 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                >
+                  ➖
+                </button>
+                <button
+                  onClick={() => {setZoomLevel(1); setPanOffset({ x: 0, y: 0 })}}
+                  className="px-3 py-1 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                >
+                  {Math.round(zoomLevel * 100)}%
+                </button>
+                <button
+                  onClick={() => setZoomLevel(Math.min(3, zoomLevel + 0.25))}
+                  className="px-2 py-1 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                >
+                  ➕
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -343,15 +407,56 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
           </div>
         ) : (
           <div className="relative">
-            {/* Main Chart SVG */}
-            <svg width={chartWidth} height={chartHeight} className="border rounded-lg bg-gray-50 dark:bg-gray-900">
-              {/* Grid Lines */}
-              <defs>
-                <pattern id="grid" width="50" height="30" patternUnits="userSpaceOnUse">
-                  <path d="M 50 0 L 0 0 0 30" fill="none" stroke="#e5e7eb" strokeWidth="0.5"/>
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
+            {/* Professional Chart Container - Bybit Style */}
+            <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+              
+              {/* Chart Header with Symbol and Price */}
+              <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-lg font-bold text-white">
+                    {signalData ? signalData.symbol : `Signal #${signalId}`}
+                  </h3>
+                  {currentPrice && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-mono text-white">
+                        {formatPrice(currentPrice)}
+                      </span>
+                      <Badge variant="outline" className="text-green-400 border-green-400">
+                        {signalData?.side}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <span>📊 {candles.length} candles</span>
+                  <span>•</span>
+                  <span>⏱️ {selectedTimeframe.toUpperCase()}</span>
+                </div>
+              </div>
+
+              {/* Main Chart SVG - Enhanced */}
+              <svg 
+                width={chartWidth} 
+                height={chartHeight} 
+                className="bg-gray-900"
+                style={{ cursor: 'crosshair' }}
+              >
+                {/* Professional Grid */}
+                <defs>
+                  <pattern id="professionalGrid" width="50" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 50 0 L 0 0 0 40" fill="none" stroke="#374151" strokeWidth="0.5" opacity="0.3"/>
+                  </pattern>
+                  <linearGradient id="candleGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style={{stopColor: '#10b981', stopOpacity: 0.8}} />
+                    <stop offset="100%" style={{stopColor: '#059669', stopOpacity: 0.9}} />
+                  </linearGradient>
+                  <linearGradient id="bearGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style={{stopColor: '#ef4444', stopOpacity: 0.8}} />
+                    <stop offset="100%" style={{stopColor: '#dc2626', stopOpacity: 0.9}} />
+                  </linearGradient>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#professionalGrid)" />
 
               {/* Price Axis */}
               {Array.from({ length: 6 }, (_, i) => {
@@ -383,85 +488,137 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
                 )
               })}
 
-              {/* Layer 1: Candlesticks */}
+              {/* Layer 1: Professional Candlesticks - Bybit Style */}
               {showCandlesLayer && candles.map((candle, i) => {
-                const x = timestampToX(candle.timestamp)
-                const openY = priceToY(candle.open)
-                const closeY = priceToY(candle.close)
-                const highY = priceToY(candle.high)
-                const lowY = priceToY(candle.low)
+                const x = timestampToX(candle.timestamp) * zoomLevel + panOffset.x
+                const openY = priceToY(candle.open) * zoomLevel + panOffset.y
+                const closeY = priceToY(candle.close) * zoomLevel + panOffset.y
+                const highY = priceToY(candle.high) * zoomLevel + panOffset.y
+                const lowY = priceToY(candle.low) * zoomLevel + panOffset.y
                 
                 const isGreen = candle.close > candle.open
-                const bodyColor = isGreen ? '#10b981' : '#ef4444'
-                const wickColor = isGreen ? '#065f46' : '#991b1b'
+                const isDoji = Math.abs(candle.close - candle.open) < (candle.high - candle.low) * 0.02
                 
-                const candleWidth = Math.max(2, (chartWidth - 2 * padding) / candles.length * 0.8)
+                const candleWidth = Math.max(3, (chartWidth - 2 * padding) / candles.length * 0.85 * zoomLevel)
                 
                 return (
-                  <g key={i}>
-                    {/* Wick */}
-                    <line x1={x} y1={highY} x2={x} y2={lowY} 
-                          stroke={wickColor} strokeWidth="1" />
+                  <g key={i} className="candle-group">
+                    {/* High-Low Wick */}
+                    <line 
+                      x1={x} y1={highY} x2={x} y2={lowY} 
+                      stroke={isGreen ? '#10b981' : '#ef4444'} 
+                      strokeWidth={Math.max(1, zoomLevel)} 
+                      opacity="0.8"
+                    />
                     
-                    {/* Body */}
+                    {/* Candle Body with Gradient */}
                     <rect 
                       x={x - candleWidth/2} 
                       y={Math.min(openY, closeY)} 
                       width={candleWidth}
-                      height={Math.abs(closeY - openY) || 1}
-                      fill={bodyColor}
-                      stroke={wickColor}
-                      strokeWidth="1"
+                      height={Math.max(1, Math.abs(closeY - openY))}
+                      fill={isDoji ? '#6b7280' : (isGreen ? 'url(#candleGradient)' : 'url(#bearGradient)')}
+                      stroke={isGreen ? '#059669' : '#dc2626'}
+                      strokeWidth="0.5"
+                      rx="1"
+                      className="transition-opacity hover:opacity-80"
+                    />
+                    
+                    {/* Volume indicator at bottom */}
+                    <rect 
+                      x={x - candleWidth/2} 
+                      y={chartHeight - padding - (candle.volume / Math.max(...candles.map(c => c.volume))) * 30}
+                      width={candleWidth}
+                      height={(candle.volume / Math.max(...candles.map(c => c.volume))) * 30}
+                      fill={isGreen ? '#10b981' : '#ef4444'}
+                      opacity="0.3"
                     />
                   </g>
                 )
               })}
 
-              {/* Layer 2: Trading Markers */}
+              {/* Layer 2: Professional Trading Markers - Styled as Bybit */}
               {showTradingLayer && markers.map((marker) => {
-                const x = timestampToX(marker.timestamp)
-                const y = priceToY(marker.price)
+                const x = timestampToX(marker.timestamp) * zoomLevel + panOffset.x
+                const y = priceToY(marker.price) * zoomLevel + panOffset.y
+                
+                // Icon styles for different marker types
+                const getMarkerIcon = (type: string) => {
+                  switch(type) {
+                    case 'tp1': return '🎯'
+                    case 'tp2': return '💎'
+                    case 'tp3': return '🏆'
+                    case 'sl': return '🛑'
+                    case 'entry': return '📍'
+                    default: return '📊'
+                  }
+                }
                 
                 return (
-                  <g key={marker.id}>
-                    {/* Horizontal price line */}
+                  <g key={marker.id} className="trading-marker">
+                    {/* Professional price line with shadow */}
                     <line 
-                      x1={padding} 
-                      y1={y} 
-                      x2={chartWidth - padding} 
-                      y2={y}
+                      x1={padding} y1={y+1} x2={chartWidth - padding} y2={y+1}
+                      stroke="#000000" strokeWidth="3" opacity="0.2"
+                    />
+                    <line 
+                      x1={padding} y1={y} x2={chartWidth - padding} y2={y}
                       stroke={marker.color}
                       strokeWidth="2"
-                      strokeDasharray={marker.type === 'sl' ? "5,5" : "none"}
-                      opacity="0.8"
+                      strokeDasharray={marker.type === 'sl' ? "8,4" : marker.type === 'entry' ? "none" : "12,6"}
+                      opacity="0.9"
+                      className="animate-pulse"
                     />
                     
-                    {/* Price marker circle */}
+                    {/* Enhanced marker with glow effect */}
                     <circle 
-                      cx={x} 
-                      cy={y} 
-                      r="4"
+                      cx={x} cy={y} r="8"
+                      fill={marker.color} opacity="0.2"
+                    />
+                    <circle 
+                      cx={x} cy={y} r="5"
                       fill={marker.color}
                       stroke="white"
                       strokeWidth="2"
+                      className="shadow-lg"
                     />
                     
-                    {/* Price label */}
-                    <text 
-                      x={chartWidth - padding + 5} 
-                      y={y + 4} 
-                      fontSize="10" 
-                      fill={marker.color}
-                      fontWeight="bold"
-                    >
-                      {marker.label}
-                    </text>
+                    {/* Price label with professional styling */}
+                    <g>
+                      <rect 
+                        x={chartWidth - padding + 5} 
+                        y={y - 12} 
+                        width="80" 
+                        height="20"
+                        fill={marker.color}
+                        rx="4"
+                        opacity="0.9"
+                      />
+                      <text 
+                        x={chartWidth - padding + 10} 
+                        y={y - 2} 
+                        fontSize="11" 
+                        fill="white"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        {getMarkerIcon(marker.type)} {formatPrice(marker.price)}
+                      </text>
+                    </g>
+
+                    {/* Interactive hover area */}
+                    <circle 
+                      cx={x} cy={y} r="15"
+                      fill="transparent"
+                      className="cursor-pointer hover:fill-white hover:opacity-10"
+                    />
                   </g>
                 )
               })}
             </svg>
+            </div>
 
-            {/* Chart Legend */}
+            {/* Professional Chart Legend - Bybit Style */}
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {showTradingLayer && markers.map((marker) => (
                 <div key={marker.id} className="flex items-center gap-2">
@@ -476,25 +633,32 @@ export default function EnhancedSignalChart({ signalId, signalData }: Props) {
               ))}
             </div>
 
-            {/* Chart Stats */}
-            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Professional Stats Panel - Bybit Style */}
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
               <div className="text-center">
-                <p className="text-sm text-gray-500">Timeframe</p>
-                <p className="font-semibold">{selectedTimeframe.toUpperCase()}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Timeframe</p>
+                <p className="font-bold text-white text-lg">{selectedTimeframe.toUpperCase()}</p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-500">Candles</p>
-                <p className="font-semibold">{candles.length}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Candles</p>
+                <p className="font-bold text-blue-400 text-lg">{candles.length}</p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-500">Price Range</p>
-                <p className="font-semibold text-xs">
-                  {formatPrice(priceRange.min)} - {formatPrice(priceRange.max)}
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Price Range</p>
+                <p className="font-bold text-yellow-400 text-sm font-mono">
+                  {formatPrice(priceRange.min)}
+                </p>
+                <p className="font-bold text-yellow-400 text-sm font-mono">
+                  {formatPrice(priceRange.max)}
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-500">Markers</p>
-                <p className="font-semibold">{markers.length}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Signals</p>
+                <p className="font-bold text-green-400 text-lg">{markers.length}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Zoom</p>
+                <p className="font-bold text-purple-400 text-lg">{Math.round(zoomLevel * 100)}%</p>
               </div>
             </div>
           </div>
