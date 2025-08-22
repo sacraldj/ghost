@@ -19,9 +19,13 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '500')
     const interval = searchParams.get('interval') || '1m'
     
-    console.log(`📊 Fetching candles for signal: ${signalId}`)
+    console.log(`📊 [PRODUCTION DEBUG] Fetching candles for signal: ${signalId}`)
+    console.log(`🔧 [PRODUCTION DEBUG] Environment: NODE_ENV=${process.env.NODE_ENV}`)
+    console.log(`🔧 [PRODUCTION DEBUG] Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'NOT SET'}`)
+    console.log(`🔧 [PRODUCTION DEBUG] Supabase Secret Key: ${process.env.SUPABASE_SECRET_KEY ? 'SET' : 'NOT SET'}`)
     
     // Получаем информацию о сигнале из v_trades
+    console.log(`🔍 [PRODUCTION DEBUG] Querying v_trades table for signalId: ${signalId}`)
     const { data: signalData, error: signalError } = await supabase
       .from('v_trades')
       .select('symbol, side, entry_min, entry_max, tp1, tp2, tp3, sl, posted_ts, created_at')
@@ -29,31 +33,49 @@ export async function GET(
       .single()
     
     if (signalError || !signalData) {
-      console.error('❌ Signal not found:', signalError)
-      return NextResponse.json({ error: 'Signal not found' }, { status: 404 })
+      console.error('❌ [PRODUCTION DEBUG] Signal not found:', signalError)
+      console.error('❌ [PRODUCTION DEBUG] Supabase error details:', JSON.stringify(signalError, null, 2))
+      return NextResponse.json({ 
+        error: 'Signal not found', 
+        debug: {
+          signalId,
+          supabaseError: signalError,
+          environment: process.env.NODE_ENV
+        }
+      }, { status: 404 })
     }
     
     console.log(`✅ Found signal: ${signalData.symbol} ${signalData.side}`)
     
     // Получаем реальные свечи с Bybit
+    console.log(`📡 [PRODUCTION DEBUG] Fetching candles from Bybit for ${signalData.symbol}`)
     let candlesData = await fetchBybitCandles(signalData.symbol, interval, limit)
     
     if (!candlesData || candlesData.length === 0) {
-      console.log(`⚠️ No candles data for ${signalData.symbol}, generating mock data`)
+      console.log(`⚠️ [PRODUCTION DEBUG] No candles data for ${signalData.symbol}, generating mock data`)
       
       // Генерируем демо-данные для тестирования
       candlesData = generateMockCandles(signalData)
+      console.log(`🔧 [PRODUCTION DEBUG] Generated ${candlesData?.length || 0} mock candles`)
       
       if (!candlesData || candlesData.length === 0) {
+        console.error(`❌ [PRODUCTION DEBUG] Failed to generate mock data`)
         return NextResponse.json({
           signal: signalData,
           candles: [],
           stats: null,
           interval,
           source: 'no_data',
-          message: 'No candles available yet'
+          message: 'No candles available yet',
+          debug: {
+            signalId,
+            symbol: signalData.symbol,
+            environment: process.env.NODE_ENV
+          }
         })
       }
+    } else {
+      console.log(`✅ [PRODUCTION DEBUG] Got ${candlesData.length} real candles from Bybit`)
     }
     
     // Конвертируем данные в нужный формат
@@ -104,21 +126,33 @@ export async function GET(
       }
     } : null
     
-    console.log(`✅ Returning ${formattedCandles.length} candles for ${signalData.symbol}`)
+    console.log(`✅ [PRODUCTION DEBUG] Returning ${formattedCandles.length} candles for ${signalData.symbol}`)
     
     return NextResponse.json({
       signal: signalData,
       candles: formattedCandles,
       stats,
       interval,
-      source: 'live_bybit'
+      source: candlesData && Array.isArray(candlesData[0]) ? 'live_bybit' : 'mock_data',
+      debug: {
+        environment: process.env.NODE_ENV,
+        candlesCount: formattedCandles.length,
+        statsAvailable: !!stats,
+        signalId
+      }
     })
     
   } catch (error) {
-    console.error('❌ API error:', error)
+    console.error('❌ [PRODUCTION DEBUG] API error:', error)
+    console.error('❌ [PRODUCTION DEBUG] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      debug: {
+        environment: process.env.NODE_ENV,
+        timestamp: new Date().toISOString(),
+        errorType: error instanceof Error ? error.constructor.name : typeof error
+      }
     }, { status: 500 })
   }
 }
