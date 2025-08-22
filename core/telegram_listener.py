@@ -51,11 +51,14 @@ except ImportError:
     def get_image_parser():
         return None
 
-# Импортируем новую систему автоматической авторизации
+# Импортируем УМНУЮ и стандартную системы авторизации
 try:
+    from core.telegram_smart_auth import create_smart_auth_client
     from core.telegram_auto_auth import TelegramAutoAuth, create_auto_auth_client
+    logger.info("✅ Умная система авторизации доступна")
 except ImportError:
-    logger.warning("⚠️ telegram_auto_auth not available, using fallback")
+    logger.warning("⚠️ Системы авторизации недоступны, используем fallback")
+    create_smart_auth_client = None
     TelegramAutoAuth = None
     create_auto_auth_client = None
 
@@ -125,30 +128,49 @@ class TelegramListener:
         try:
             session_path = 'ghost_session'
             
-            # Используем новую систему автоматической авторизации если доступна
-            if create_auto_auth_client:
+            # Пробуем УМНУЮ систему авторизации
+            if create_smart_auth_client:
                 try:
-                    logger.info("🚀 Используем улучшенную систему автоматической авторизации")
+                    logger.info("🤖 Используем УМНУЮ систему авторизации с поиском кодов")
+                    self.client = await create_smart_auth_client(
+                        str(self.api_id), 
+                        self.api_hash, 
+                        self.phone,
+                        session_path
+                    )
+                    
+                    if self.client and await self.client.is_user_authorized():
+                        me = await self.client.get_me()
+                        logger.info(f"🎉 УМНАЯ АВТОРИЗАЦИЯ УСПЕШНА: {me.first_name} (@{me.username})")
+                        return True
+                    else:
+                        logger.warning("❌ Умная авторизация не дала результата")
+                    
+                except Exception as smart_auth_error:
+                    logger.warning(f"⚠️ Ошибка умной авторизации: {smart_auth_error}")
+                    logger.info("🔄 Пробуем стандартную авторизацию...")
+            
+            # Fallback 1: Стандартная авторизация  
+            elif create_auto_auth_client:
+                try:
+                    logger.info("🔧 Используем стандартную автоматическую авторизацию")
                     self.client = await create_auto_auth_client(
                         str(self.api_id), 
                         self.api_hash, 
                         self.phone
                     )
                     
-                    if await self.client.is_user_authorized():
+                    if self.client and await self.client.is_user_authorized():
                         me = await self.client.get_me()
-                        logger.info(f"✅ Telegram клиент авторизован: {me.first_name} (@{me.username})")
+                        logger.info(f"✅ Стандартная авторизация успешна: {me.first_name}")
                         return True
-                    else:
-                        logger.error("❌ Клиент не авторизован после создания")
-                    return False
                     
                 except Exception as auto_auth_error:
-                    logger.warning(f"⚠️ Ошибка улучшенной авторизации: {auto_auth_error}")
-                    logger.info("🔄 Переходим к стандартной авторизации...")
+                    logger.warning(f"⚠️ Ошибка стандартной авторизации: {auto_auth_error}")
+                    logger.info("🔄 Переходим к ручной авторизации...")
             
-            # Fallback: стандартная система авторизации
-            logger.info("🔄 Используем стандартную систему авторизации")
+            # Fallback 2: Ручная авторизация
+            logger.info("🔧 Используем ручную систему авторизации")
             self.client = TelegramClient(session_path, self.api_id, self.api_hash)
             
             # Подключаемся с автоматической авторизацией
