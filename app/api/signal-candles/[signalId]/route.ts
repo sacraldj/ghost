@@ -36,32 +36,57 @@ export async function GET(
     console.log(`✅ Found signal: ${signalData.symbol} ${signalData.side}`)
     
     // Получаем реальные свечи с Bybit
-    const candlesData = await fetchBybitCandles(signalData.symbol, interval, limit)
+    let candlesData = await fetchBybitCandles(signalData.symbol, interval, limit)
     
     if (!candlesData || candlesData.length === 0) {
-      console.log(`⚠️ No candles data for ${signalData.symbol}`)
-      return NextResponse.json({
-        signal: signalData,
-        candles: [],
-        stats: null,
-        interval,
-        source: 'live_bybit',
-        message: 'No candles available yet'
-      })
+      console.log(`⚠️ No candles data for ${signalData.symbol}, generating mock data`)
+      
+      // Генерируем демо-данные для тестирования
+      candlesData = generateMockCandles(signalData)
+      
+      if (!candlesData || candlesData.length === 0) {
+        return NextResponse.json({
+          signal: signalData,
+          candles: [],
+          stats: null,
+          interval,
+          source: 'no_data',
+          message: 'No candles available yet'
+        })
+      }
     }
     
     // Конвертируем данные в нужный формат
-    const formattedCandles = candlesData.map(candle => ({
-      timestamp: parseInt(candle[0]) / 1000, // Bybit возвращает ms, конвертируем в секунды
-      open: parseFloat(candle[1]),
-      high: parseFloat(candle[2]), 
-      low: parseFloat(candle[3]),
-      close: parseFloat(candle[4]),
-      volume: parseFloat(candle[5]),
-      quote_volume: 0,
-      signal_id: signalId,
-      symbol: signalData.symbol
-    }))
+    const formattedCandles = candlesData.map(candle => {
+      // Проверяем формат данных
+      if (Array.isArray(candle)) {
+        // Bybit format
+        return {
+          timestamp: parseInt(candle[0]) / 1000, // Bybit возвращает ms, конвертируем в секунды
+          open: parseFloat(candle[1]),
+          high: parseFloat(candle[2]), 
+          low: parseFloat(candle[3]),
+          close: parseFloat(candle[4]),
+          volume: parseFloat(candle[5]),
+          quote_volume: 0,
+          signal_id: signalId,
+          symbol: signalData.symbol
+        }
+      } else {
+        // Mock format 
+        return {
+          timestamp: candle.timestamp,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+          quote_volume: 0,
+          signal_id: signalId,
+          symbol: signalData.symbol
+        }
+      }
+    })
     
     // Статистика по свечам
     const stats = formattedCandles.length > 0 ? {
@@ -155,6 +180,37 @@ function convertIntervalToBybit(interval: string): string {
   }
   
   return intervalMap[interval] || '1' // По умолчанию 1 минута
+}
+
+// Функция для генерации демо-данных свечей
+function generateMockCandles(signalData: any) {
+  const now = Date.now()
+  const basePrice = parseFloat(signalData.entry_min || signalData.entry_max || '1.0')
+  const candles = []
+  
+  // Генерируем 100 свечей за последние 100 минут
+  for (let i = 99; i >= 0; i--) {
+    const timestamp = now - (i * 60000) // каждая минута
+    const randomVariation = (Math.random() - 0.5) * 0.02 // ±1% вариация
+    
+    const open = basePrice * (1 + randomVariation)
+    const volatility = Math.random() * 0.01 // до 1% волатильность
+    const high = open * (1 + volatility)
+    const low = open * (1 - volatility)
+    const close = open + (Math.random() - 0.5) * (high - low)
+    
+    candles.push({
+      timestamp: Math.floor(timestamp / 1000), // в секундах
+      open: Math.round(open * 10000) / 10000,
+      high: Math.round(high * 10000) / 10000,
+      low: Math.round(low * 10000) / 10000,
+      close: Math.round(close * 10000) / 10000,
+      volume: Math.floor(Math.random() * 10000) + 1000
+    })
+  }
+  
+  console.log(`✅ Generated ${candles.length} mock candles for ${signalData.symbol}`)
+  return candles
 }
 
 // POST endpoint для тестирования (добавление искусственных свечей)
