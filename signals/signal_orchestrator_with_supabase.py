@@ -23,6 +23,7 @@ from signals.parsers.whales_crypto_parser import WhalesCryptoParser
 from signals.parsers.parser_2trade import TwoTradeParser
 from signals.parsers.crypto_hub_parser import CryptoHubParser
 from signals.parsers.ghost_test_parser import GhostTestParser
+from signals.parsers.universal_fallback_parser import UniversalFallbackParser
 from signals.parsers.signal_parser_base import ParsedSignal
 
 # Импортируем CryptoAttack24 парсер
@@ -281,6 +282,32 @@ class SignalOrchestratorWithSupabase:
                             best_parser = parser
                             best_parser_name = parser_name
                             break
+            
+            # Если ни один специализированный парсер не сработал, пробуем fallback
+            if not best_parser:
+                logger.info("🤖 Пробуем универсальный fallback парсер...")
+                if self.fallback_parser.can_parse(raw_text):
+                    signal = self.fallback_parser.parse_signal(raw_text, trader_id)
+                    if signal:
+                        logger.info(f"✅ Универсальный fallback парсер сработал!")
+                        
+                        # Сохраняем результат fallback парсера
+                        await self._save_parsed_signal_to_supabase(signal, 'universal_fallback', raw_text)
+                        
+                        if trader_id in ['ghostsignaltest', 'ghost_test']:
+                            await self._save_to_v_trades_table(signal, trader_id, raw_text)
+                        
+                        # Статистика зависит от валидности
+                        if signal.is_valid:
+                            self.stats['signals_saved'] += 1
+                            logger.info(f"✅ VALID fallback signal: {signal.symbol} {signal.direction}")
+                        else:
+                            logger.warning(f"⚠️ INVALID fallback signal: {signal.symbol} {signal.direction} | Errors: {signal.parse_errors}")
+                        
+                        self.stats['parsers_used']['universal_fallback'] = self.stats['parsers_used'].get('universal_fallback', 0) + 1
+                        return signal
+                else:
+                    logger.warning("⚠️ Даже fallback парсер не может обработать этот текст")
             
             if not best_parser:
                 logger.warning(f"⚠️ No suitable parser found for signal from {trader_id}")
