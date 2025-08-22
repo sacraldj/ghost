@@ -297,16 +297,21 @@ class SignalOrchestratorWithSupabase:
             
             # Обновляем статистику парсера
             self.stats['parsers_used'][best_parser_name] += 1
-            self.stats['signals_saved'] += 1
             
-            # Сохраняем успешно обработанный сигнал в Supabase
+            # Сохраняем ВСЕ сигналы в Supabase (включая невалидные)
             await self._save_parsed_signal_to_supabase(signal, best_parser_name, raw_text)
             
             # Для тестового канала ghostsignaltest также сохраняем в v_trades
             if trader_id in ['ghostsignaltest', 'ghost_test'] and isinstance(self.parsers.get(trader_id), GhostTestParser):
                 await self._save_to_v_trades_table(signal, trader_id, raw_text)
             
-            logger.info(f"✅ Signal parsed and saved to Supabase with {best_parser_name}: {signal.symbol} {signal.direction}")
+            # Статистика зависит от валидности
+            if signal.is_valid:
+                self.stats['signals_saved'] += 1
+                logger.info(f"✅ VALID signal parsed and saved: {signal.symbol} {signal.direction}")
+            else:
+                logger.warning(f"⚠️ INVALID signal parsed and saved: {signal.symbol} {signal.direction} | Errors: {signal.parse_errors}")
+                
             return signal
             
         except Exception as e:
@@ -388,7 +393,8 @@ class SignalOrchestratorWithSupabase:
                 
                 # Метаданные
                 'parse_version': 'v1.0',
-                'is_valid': True,
+                'is_valid': getattr(signal, 'is_valid', True),
+                'validation_errors': getattr(signal, 'parse_errors', None),
                 
                 # Генерируем уникальный checksum для Prisma схемы (максимум 64 символа)
                 'checksum': f"{signal.trader_id[:10]}_{signal.symbol[:10]}_{int(datetime.now().timestamp())}_{abs(hash(raw_text)) % 100000}"

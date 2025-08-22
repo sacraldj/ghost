@@ -284,18 +284,30 @@ export default function TestTableComponent() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`px-2 py-1 rounded text-xs font-medium ${
-                            record.side === 'LONG' 
-                              ? 'bg-green-900/50 text-green-400' 
-                              : 'bg-red-900/50 text-red-400'
-                          }`}>
-                            {record.side || 'N/A'}
-                          </div>
-                          <div className="text-gray-500 text-xs mt-1">
-                            {record.created_at 
-                              ? new Date(record.created_at).toLocaleDateString('ru-RU') 
-                              : 'N/A'
-                            }
+                          <div className="flex flex-col gap-1">
+                            <div className={`px-2 py-1 rounded text-xs font-medium ${
+                              record.side === 'LONG' 
+                                ? 'bg-green-900/50 text-green-400' 
+                                : 'bg-red-900/50 text-red-400'
+                            }`}>
+                              {record.side || 'N/A'}
+                            </div>
+                            
+                            {/* Status indicator */}
+                            <div className={`px-2 py-1 rounded text-xs font-medium text-center ${
+                              record.status === 'cancelled' || record.was_fillable === 0
+                                ? 'bg-red-900/30 text-red-400 border border-red-400/20' 
+                                : 'bg-green-900/30 text-green-400 border border-green-400/20'
+                            }`}>
+                              {record.status === 'cancelled' || record.was_fillable === 0 ? '❌ INVALID' : '✅ VALID'}
+                            </div>
+                            
+                            <div className="text-gray-500 text-xs">
+                              {record.created_at 
+                                ? new Date(record.created_at).toLocaleDateString('ru-RU') 
+                                : 'N/A'
+                              }
+                            </div>
                           </div>
                         </div>
                         
