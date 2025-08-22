@@ -12,6 +12,8 @@ export default function GhostMainDashboard() {
   const [isClient, setIsClient] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState('180d')
   const router = useRouter()
+  
+  // Build timestamp: 2025-08-22T10:57:00Z
 
   useEffect(() => {
     setIsClient(true)
