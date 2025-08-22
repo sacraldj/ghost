@@ -51,16 +51,15 @@ except ImportError:
     def get_image_parser():
         return None
 
-# Импортируем УМНУЮ и стандартную системы авторизации
+# Импортируем РАБОЧУЮ систему авторизации
 try:
-    from core.telegram_smart_auth import create_smart_auth_client
-    from core.telegram_auto_auth import TelegramAutoAuth, create_auto_auth_client
-    logger.info("✅ Умная система авторизации доступна")
+    # НОВАЯ РАБОЧАЯ СИСТЕМА
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from working_auto_auth import WorkingAutoAuth
+    logger.info("✅ Рабочая система автоматической авторизации доступна")
 except ImportError:
-    logger.warning("⚠️ Системы авторизации недоступны, используем fallback")
-    create_smart_auth_client = None
-    TelegramAutoAuth = None
-    create_auto_auth_client = None
+    logger.warning("⚠️ Рабочая система авторизации недоступна")
+    WorkingAutoAuth = None
 
 @dataclass
 class ChannelConfig:
@@ -124,79 +123,54 @@ class TelegramListener:
 # Старый метод удален - используется новая система автоматической авторизации
     
     async def initialize(self):
-        """Инициализация Telegram клиента с улучшенной автоматической авторизацией"""
+        """Инициализация Telegram клиента с РАБОЧЕЙ автоматической авторизацией"""
         try:
             session_path = 'ghost_session'
             
-            # Пробуем УМНУЮ систему авторизации
-            if create_smart_auth_client:
+            # НОВАЯ РАБОЧАЯ СИСТЕМА АВТОМАТИЧЕСКОЙ АВТОРИЗАЦИИ
+            if WorkingAutoAuth:
                 try:
-                    logger.info("🤖 Используем УМНУЮ систему авторизации с поиском кодов")
-                    self.client = await create_smart_auth_client(
-                        str(self.api_id), 
-                        self.api_hash, 
-                        self.phone,
-                        session_path
-                    )
+                    logger.info("🤖 Используем РАБОЧУЮ систему автоматической авторизации")
                     
-                    if self.client and await self.client.is_user_authorized():
-                        me = await self.client.get_me()
-                        logger.info(f"🎉 УМНАЯ АВТОРИЗАЦИЯ УСПЕШНА: {me.first_name} (@{me.username})")
-                        return True
+                    working_auth = WorkingAutoAuth()
+                    
+                    # Автоматически авторизуем сессию
+                    success = await working_auth.auto_auth(session_path)
+                    
+                    if success:
+                        # Создаем клиент с авторизованной сессией
+                        self.client = TelegramClient(session_path, int(self.api_id), self.api_hash)
+                        await self.client.connect()
+                        
+                        if await self.client.is_user_authorized():
+                            me = await self.client.get_me()
+                            logger.info(f"🎉 РАБОЧАЯ АВТОРИЗАЦИЯ УСПЕШНА: {me.first_name} (@{me.username})")
+                            return True
+                        else:
+                            logger.error("❌ Сессия не авторизована после успешной авторизации")
                     else:
-                        logger.warning("❌ Умная авторизация не дала результата")
+                        logger.error("❌ Рабочая авторизация не удалась")
                     
-                except Exception as smart_auth_error:
-                    logger.warning(f"⚠️ Ошибка умной авторизации: {smart_auth_error}")
-                    logger.info("🔄 Пробуем стандартную авторизацию...")
+                except Exception as working_auth_error:
+                    logger.error(f"❌ Ошибка рабочей авторизации: {working_auth_error}")
             
-            # Fallback 1: Стандартная авторизация  
-            elif create_auto_auth_client:
-                try:
-                    logger.info("🔧 Используем стандартную автоматическую авторизацию")
-                    self.client = await create_auto_auth_client(
-                        str(self.api_id), 
-                        self.api_hash, 
-                        self.phone
-                    )
-                    
-                    if self.client and await self.client.is_user_authorized():
-                        me = await self.client.get_me()
-                        logger.info(f"✅ Стандартная авторизация успешна: {me.first_name}")
-                        return True
-                    
-                except Exception as auto_auth_error:
-                    logger.warning(f"⚠️ Ошибка стандартной авторизации: {auto_auth_error}")
-                    logger.info("🔄 Переходим к ручной авторизации...")
+            # Fallback: Попытка использовать существующую сессию
+            logger.info("🔧 Пробуем использовать существующую сессию...")
+            self.client = TelegramClient(session_path, int(self.api_id), self.api_hash)
             
-            # Fallback 2: Ручная авторизация
-            logger.info("🔧 Используем ручную систему авторизации")
-            self.client = TelegramClient(session_path, self.api_id, self.api_hash)
-            
-            # Подключаемся с автоматической авторизацией
             try:
-                # Пробуем подключиться с существующей сессией
                 await self.client.connect()
                 
                 if await self.client.is_user_authorized():
-                    logger.info("✅ Используем существующую сессию")
+                    me = await self.client.get_me()
+                    logger.info(f"✅ Используем существующую сессию: {me.first_name} (@{me.username})")
+                    return True
                 else:
-                    logger.info("🔑 Сессия недействительна")
-                    logger.error("❌ Автоматическая авторизация не удалась: используйте улучшенную систему")
+                    logger.error("❌ Сессия не авторизована - требуется авторизация через рабочую систему")
                     return False
                         
             except Exception as auth_error:
-                logger.info(f"🔑 Ошибка подключения: {auth_error}")
-                logger.error("❌ Автоматическая авторизация не удалась: используйте улучшенную систему")
-                return False
-            
-            # Проверяем авторизацию
-            if await self.client.is_user_authorized():
-                me = await self.client.get_me()
-                logger.info(f"✅ Telegram клиент авторизован: {me.first_name} (@{me.username})")
-                return True
-            else:
-                logger.error("❌ Telegram клиент не авторизован")
+                logger.error(f"❌ Ошибка подключения: {auth_error}")
                 return False
                 
         except Exception as e:
