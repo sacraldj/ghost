@@ -57,6 +57,17 @@ class WorkingAutoAuth:
                     logger.warning("⚠️ Reader сессия не авторизована")
             except Exception as e:
                 logger.warning(f"⚠️ Reader сессия недоступна: {e}")
+                
+                # Пробуем восстановить reader сессию
+                logger.info("🔄 Пробуем восстановить reader сессию...")
+                if self._try_restore_reader_session():
+                    try:
+                        await reader_client.connect()
+                        if await reader_client.is_user_authorized():
+                            reader_available = True
+                            logger.info("✅ Reader сессия восстановлена!")
+                    except:
+                        pass
             
             if not reader_available:
                 logger.info("🔄 Работаем БЕЗ reader сессии - используем fallback")
@@ -165,6 +176,39 @@ class WorkingAutoAuth:
             return is_auth
             
         except Exception:
+            return False
+    
+    def _try_restore_reader_session(self) -> bool:
+        """Пробуем восстановить reader сессию из переменной окружения"""
+        try:
+            import base64
+            
+            # Имя переменной окружения с base64 данными
+            env_var = 'GHOST_READER_SESSION_B64'
+            session_data_b64 = os.getenv(env_var)
+            
+            if not session_data_b64:
+                logger.debug(f"Переменная {env_var} не найдена")
+                return False
+            
+            logger.info("🔄 Восстанавливаем reader сессию из переменной окружения...")
+            
+            # Декодируем base64
+            session_data = base64.b64decode(session_data_b64)
+            
+            # Записываем в файл
+            session_file = f'{self.reader_session}.session'
+            with open(session_file, 'wb') as f:
+                f.write(session_data)
+            
+            # Устанавливаем права доступа
+            os.chmod(session_file, 0o600)
+            
+            logger.info(f"✅ Reader сессия восстановлена: {len(session_data)} байт")
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Ошибка восстановления reader сессии: {e}")
             return False
     
     async def _fallback_auth_process(self, target_client: TelegramClient) -> bool:

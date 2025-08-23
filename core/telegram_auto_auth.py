@@ -459,42 +459,71 @@ class TelegramAutoAuth:
         return None
 
     async def _check_telegram_official_messages(self, client: TelegramClient, start_time: datetime) -> Optional[str]:
-        """Проверка официальных сообщений Telegram"""
+        """УЛУЧШЕННАЯ проверка официальных сообщений Telegram"""
         try:
+            logger.info("🔍 Ищем свежие коды авторизации...")
+            
             # Пробуем разные способы получить официальный чат Telegram
             telegram_entities = []
             
             # Способ 1: по ID 777000 (Telegram Service Notifications)
             try:
                 entity = await client.get_entity(777000)
-                telegram_entities.append(entity)
-                logger.debug("✅ Найден чат Telegram по ID 777000")
-            except:
-                pass
+                telegram_entities.append(("777000", entity))
+                logger.info("✅ Найден чат Telegram Service по ID 777000")
+            except Exception as e:
+                logger.debug(f"Не удалось получить 777000: {e}")
             
-            # Способ 2: по имени пользователя
-            for username in ['telegram', 'Telegram']:
+            # Способ 2: по username @telegram
+            for username in ['telegram']:
                 try:
                     entity = await client.get_entity(username)
-                    telegram_entities.append(entity)
-                    logger.debug(f"✅ Найден чат Telegram по имени {username}")
-                except:
+                    telegram_entities.append((f"@{username}", entity))
+                    logger.info(f"✅ Найден чат @{username}")
+                except Exception as e:
+                    logger.debug(f"Не удалось получить @{username}: {e}")
                     continue
             
+            if not telegram_entities:
+                logger.warning("⚠️ Не найден ни один официальный чат Telegram")
+                return None
+            
             # Проверяем сообщения во всех найденных чатах
-            for entity in telegram_entities:
-                async for message in client.iter_messages(entity, limit=15):
-                    if message.message and message.date > start_time - timedelta(minutes=10):
-                        text = message.message
-                        logger.debug(f"🔍 Проверяем сообщение от Telegram: {text[:50]}...")
+            time_threshold = datetime.now() - timedelta(minutes=20)  # Увеличил до 20 минут
+            
+            for source_name, entity in telegram_entities:
+                logger.info(f"🔍 Проверяем сообщения от {source_name}...")
+                try:
+                    message_count = 0
+                    async for message in client.iter_messages(entity, limit=25):  # Увеличил лимит
+                        message_count += 1
                         
+                        if not message.message or not message.date:
+                            continue
+                            
+                        # Проверяем только свежие сообщения
+                        if message.date < time_threshold:
+                            continue
+                            
+                        text = message.message
+                        logger.info(f"📱 Сообщение от {source_name} ({message.date}): {text[:100]}...")
+                        
+                        # Улучшенное извлечение кода
                         code = self._extract_code_from_sms(text)
                         if code:
-                            logger.info(f"✅ Найден код в официальных сообщениях Telegram: {code}")
+                            logger.info(f"🎉 НАЙДЕН КОД в сообщении от {source_name}: {code}")
                             return code
             
+                    logger.info(f"📊 Проверено {message_count} сообщений от {source_name}")
+                    
         except Exception as e:
-            logger.debug(f"Ошибка проверки официальных сообщений Telegram: {e}")
+                    logger.warning(f"Ошибка при проверке {source_name}: {e}")
+                    continue
+            
+            logger.warning("❌ Код не найден в официальных сообщениях Telegram")
+            
+        except Exception as e:
+            logger.error(f"Критическая ошибка проверки официальных сообщений: {e}")
         
         return None
 
