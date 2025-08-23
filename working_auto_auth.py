@@ -46,6 +46,11 @@ class WorkingAutoAuth:
         try:
             await target_client.connect()
             
+            # ВСЕГДА проверяем возможность восстановления reader сессии из переменной окружения
+            logger.info("🔍 Проверяем наличие переменной окружения GHOST_READER_SESSION_B64...")
+            if self._try_restore_reader_session():
+                logger.info("✅ Reader сессия восстановлена из переменной окружения!")
+            
             # Проверяем есть ли reader сессия
             reader_available = False
             try:
@@ -57,17 +62,6 @@ class WorkingAutoAuth:
                     logger.warning("⚠️ Reader сессия не авторизована")
             except Exception as e:
                 logger.warning(f"⚠️ Reader сессия недоступна: {e}")
-                
-                # Пробуем восстановить reader сессию
-                logger.info("🔄 Пробуем восстановить reader сессию...")
-                if self._try_restore_reader_session():
-                    try:
-                        await reader_client.connect()
-                        if await reader_client.is_user_authorized():
-                            reader_available = True
-                            logger.info("✅ Reader сессия восстановлена!")
-                    except:
-                        pass
             
             if not reader_available:
                 logger.info("🔄 Работаем БЕЗ reader сессии - используем fallback")
@@ -187,24 +181,28 @@ class WorkingAutoAuth:
             env_var = 'GHOST_READER_SESSION_B64'
             session_data_b64 = os.getenv(env_var)
             
+            logger.info(f"🔍 Ищем переменную {env_var}...")
             if not session_data_b64:
-                logger.debug(f"Переменная {env_var} не найдена")
+                logger.warning(f"❌ Переменная {env_var} не найдена в окружении!")
                 return False
             
+            logger.info(f"✅ Переменная {env_var} найдена! Размер: {len(session_data_b64)} символов")
             logger.info("🔄 Восстанавливаем reader сессию из переменной окружения...")
             
             # Декодируем base64
             session_data = base64.b64decode(session_data_b64)
+            logger.info(f"✅ Base64 декодирован: {len(session_data)} байт")
             
             # Записываем в файл
             session_file = f'{self.reader_session}.session'
+            logger.info(f"📁 Записываем в файл: {session_file}")
             with open(session_file, 'wb') as f:
                 f.write(session_data)
             
             # Устанавливаем права доступа
             os.chmod(session_file, 0o600)
             
-            logger.info(f"✅ Reader сессия восстановлена: {len(session_data)} байт")
+            logger.info(f"✅ Reader сессия успешно восстановлена: {len(session_data)} байт")
             return True
             
         except Exception as e:
