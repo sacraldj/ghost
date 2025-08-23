@@ -45,7 +45,22 @@ class WorkingAutoAuth:
         
         try:
             await target_client.connect()
-            await reader_client.connect()
+            
+            # Проверяем есть ли reader сессия
+            reader_available = False
+            try:
+                await reader_client.connect()
+                if await reader_client.is_user_authorized():
+                    reader_available = True
+                    logger.info("✅ Reader сессия доступна")
+                else:
+                    logger.warning("⚠️ Reader сессия не авторизована")
+            except Exception as e:
+                logger.warning(f"⚠️ Reader сессия недоступна: {e}")
+            
+            if not reader_available:
+                logger.info("🔄 Работаем БЕЗ reader сессии - используем fallback")
+                return await self._fallback_auth_process(target_client)
             
             # 1. Получаем последний доступный код СНАЧАЛА
             old_code = await self._get_latest_code(reader_client)
@@ -150,6 +165,32 @@ class WorkingAutoAuth:
             return is_auth
             
         except Exception:
+            return False
+    
+    async def _fallback_auth_process(self, target_client: TelegramClient) -> bool:
+        """Fallback авторизация БЕЗ reader сессии"""
+        logger.info("🆘 FALLBACK: Пробуем авторизацию без reader сессии")
+        
+        try:
+            # Запрашиваем код
+            logger.info("📱 Отправляем запрос кода...")
+            await target_client.send_code_request(self.phone)
+            
+            # Ждем немного и пробуем использовать саму target сессию для чтения
+            await asyncio.sleep(3)
+            
+            # Если target сессия хоть частично авторизована, можем попробовать читать через неё
+            logger.info("🔄 Пробуем создать временный reader из target...")
+            
+            # Простой fallback - просим код вручную (только для тестирования)
+            logger.error("⚠️ НУЖЕН READER SESSION!")
+            logger.error("⚠️ Создайте ghost_code_reader.session на сервере")
+            logger.error("⚠️ Или реализуйте другой способ получения кодов")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Fallback ошибка: {e}")
             return False
 
 
