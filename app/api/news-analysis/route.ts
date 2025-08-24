@@ -166,15 +166,41 @@ async function getNewsStatistics(days: number) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
-    const { data: newsData, error } = await supabase
+    // Сначала пытаемся получить из critical_news
+    let { data: newsData, error } = await supabase
       .from('critical_news')
       .select('*')
       .gte('created_at', startDate.toISOString())
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Error fetching news statistics:', error)
-      return getDefaultStatistics()
+    // Если critical_news недоступна, пытаемся получить из news_events
+    if (error || !newsData || newsData.length === 0) {
+      console.log('Trying news_events table as fallback...')
+      const { data: newsEventsData, error: eventsError } = await supabase
+        .from('news_events')
+        .select('*')
+        .gte('created_at', startDate.toISOString())
+        .order('created_at', { ascending: false })
+
+      if (eventsError) {
+        console.error('Error fetching from both news tables:', { critical_news: error, news_events: eventsError })
+        return getDefaultStatistics()
+      }
+
+      // Преобразуем формат news_events в формат critical_news
+      newsData = newsEventsData?.map((event: any) => ({
+        id: event.id,
+        title: event.title,
+        content: event.content,
+        source_name: event.source,
+        created_at: event.created_at,
+        published_at: event.published_at,
+        sentiment: event.price_change_1h ? (event.price_change_1h > 0 ? 0.5 : -0.5) : 0,
+        market_impact: Math.abs(event.price_change_1h || 0),
+        is_critical: event.reaction_type === 'critical',
+        prediction_result: null, // Нет данных о результатах предсказаний в news_events
+        urgency: event.reaction_type === 'critical' ? 0.8 : 0.3
+      })) || []
     }
 
     // Анализируем данные
@@ -202,18 +228,66 @@ async function getNewsStatistics(days: number) {
       .slice(0, 5)
       .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {})
 
+    // Расчет точности предсказаний на основе реальных данных
+    let predictionAccuracy = '0%'
+    let timeAccuracy = {
+      '1h_accuracy': '0%',
+      '4h_accuracy': '0%', 
+      '24h_accuracy': '0%'
+    }
+
+    if (newsData && newsData.length > 0) {
+      // Получаем новости с результатами предсказаний
+      const newsWithPredictions = newsData.filter((news: any) => news.prediction_result !== null)
+      
+      if (newsWithPredictions.length > 0) {
+        const correctPredictions = newsWithPredictions.filter((news: any) => news.prediction_result === true).length
+        predictionAccuracy = ((correctPredictions / newsWithPredictions.length) * 100).toFixed(1) + '%'
+      }
+
+      // Расчет точности по времени (упрощенно - можно улучшить)
+      const oneHourNews = newsData.filter((news: any) => {
+        const newsTime = new Date(news.created_at)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+        return newsTime >= oneHourAgo && news.prediction_result !== null
+      })
+      
+      const fourHourNews = newsData.filter((news: any) => {
+        const newsTime = new Date(news.created_at)
+        const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000)
+        return newsTime >= fourHoursAgo && news.prediction_result !== null
+      })
+
+      const dayNews = newsData.filter((news: any) => {
+        const newsTime = new Date(news.created_at)
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        return newsTime >= dayAgo && news.prediction_result !== null
+      })
+
+      if (oneHourNews.length > 0) {
+        const correct1h = oneHourNews.filter((news: any) => news.prediction_result === true).length
+        timeAccuracy['1h_accuracy'] = ((correct1h / oneHourNews.length) * 100).toFixed(1) + '%'
+      }
+
+      if (fourHourNews.length > 0) {
+        const correct4h = fourHourNews.filter((news: any) => news.prediction_result === true).length
+        timeAccuracy['4h_accuracy'] = ((correct4h / fourHourNews.length) * 100).toFixed(1) + '%'
+      }
+
+      if (dayNews.length > 0) {
+        const correct24h = dayNews.filter((news: any) => news.prediction_result === true).length
+        timeAccuracy['24h_accuracy'] = ((correct24h / dayNews.length) * 100).toFixed(1) + '%'
+      }
+    }
+
     return {
       total_news: totalNews,
       critical_news: criticalNews,
-      prediction_accuracy: '75.3%', // Заглушка - можно подключить реальные данные
+      prediction_accuracy: predictionAccuracy,
       avg_market_impact: (newsData?.reduce((sum: number, news: any) => sum + (news.market_impact || 0), 0) / totalNews || 0).toFixed(3),
       sentiment_breakdown: { bullish, bearish, neutral },
       top_sources: topSources,
-      time_accuracy: {
-        '1h_accuracy': '72.1%',
-        '4h_accuracy': '68.5%',
-        '24h_accuracy': '71.8%'
-      }
+      time_accuracy: timeAccuracy
     }
 
   } catch (error) {
@@ -224,15 +298,40 @@ async function getNewsStatistics(days: number) {
 
 async function getRecentNews(limit: number) {
   try {
-    const { data: newsData, error } = await supabase
+    // Сначала пытаемся получить из critical_news
+    let { data: newsData, error } = await supabase
       .from('critical_news')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit)
 
-    if (error) {
-      console.error('Error fetching recent news:', error)
-      return []
+    // Если critical_news недоступна, пытаемся получить из news_events
+    if (error || !newsData || newsData.length === 0) {
+      console.log('Trying news_events for recent news...')
+      const { data: newsEventsData, error: eventsError } = await supabase
+        .from('news_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (eventsError) {
+        console.error('Error fetching recent news from both tables:', { critical_news: error, news_events: eventsError })
+        return []
+      }
+
+      // Преобразуем формат news_events
+      newsData = newsEventsData?.map((event: any) => ({
+        id: event.id,
+        title: event.title,
+        content: event.content,
+        source_name: event.source,
+        created_at: event.created_at,
+        published_at: event.published_at,
+        sentiment: event.price_change_1h ? (event.price_change_1h > 0 ? 0.5 : -0.5) : 0,
+        market_impact: Math.abs(event.price_change_1h || 0),
+        is_critical: event.reaction_type === 'critical',
+        urgency: event.reaction_type === 'critical' ? 0.8 : 0.3
+      })) || []
     }
 
     return newsData?.map((news: any) => ({

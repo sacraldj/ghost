@@ -85,10 +85,14 @@ export default function TestTableComponent() {
   // Auto-refresh removed - using real-time updates
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  
+  // ✅ НОВОЕ: Добавляем аналитику трейдеров (не ломая существующий функционал)
+  const [tradersAnalytics, setTradersAnalytics] = useState<Map<string, any>>(new Map())
 
   // Загружаем сохраненные записи при инициализации
   useEffect(() => {
     fetchSavedRecords()
+    fetchTradersAnalytics() // ✅ НОВОЕ: загружаем аналитику трейдеров
   }, [])
 
   // Real-time updates every 8 seconds
@@ -125,8 +129,30 @@ export default function TestTableComponent() {
     }
   }
 
+  // ✅ НОВОЕ: Функция для загрузки аналитики трейдеров (дополняет существующий функционал)
+  const fetchTradersAnalytics = async () => {
+    try {
+      const response = await fetch('/api/traders-analytics?limit=100')
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        // Создаем Map для быстрого поиска аналитики по trader_id
+        const analyticsMap = new Map()
+        result.data.forEach((trader: any) => {
+          analyticsMap.set(trader.trader_id, trader)
+        })
+        setTradersAnalytics(analyticsMap)
+        console.log(`📊 Loaded analytics for ${result.data.length} traders`)
+      }
+    } catch (error) {
+      console.error('Error fetching traders analytics:', error)
+      // Не показываем ошибку пользователю - аналитика опциональна
+    }
+  }
+
   const handleManualRefresh = () => {
     fetchSavedRecords(false)
+    fetchTradersAnalytics() // ✅ НОВОЕ: обновляем и аналитику при ручном refresh
   }
 
   const handleRecordClick = (record: any) => {
@@ -148,6 +174,32 @@ export default function TestTableComponent() {
     const value = selectedRecord[fieldName]
     if (value === null || value === undefined) return ''
     return String(value)
+  }
+
+  // ✅ НОВОЕ: Helper функции для аналитики трейдеров
+  const getTraderAnalytics = (source: string) => {
+    return tradersAnalytics.get(source) || null
+  }
+
+  const getGradeBadge = (grade: string) => {
+    const colors = {
+      'A': 'bg-green-500 text-white',
+      'B': 'bg-blue-500 text-white', 
+      'C': 'bg-yellow-500 text-black',
+      'D': 'bg-red-500 text-white'
+    }
+    return colors[grade as keyof typeof colors] || 'bg-gray-500 text-white'
+  }
+
+  const getTrustIndexColor = (trustIndex: number) => {
+    if (trustIndex >= 80) return 'text-green-400'
+    if (trustIndex >= 60) return 'text-blue-400'
+    if (trustIndex >= 40) return 'text-yellow-400'
+    return 'text-red-400'
+  }
+
+  const formatTrustIndex = (trustIndex: number | undefined) => {
+    return trustIndex !== undefined ? Math.round(trustIndex) : '—'
   }
 
   return (
@@ -193,6 +245,33 @@ export default function TestTableComponent() {
           </div>
         </div>
       </div>
+
+      {/* ✅ НОВОЕ: Summary блок с аналитикой трейдеров */}
+      {tradersAnalytics.size > 0 && (
+        <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl p-4 border border-gray-800/30">
+          <h3 className="text-sm font-medium text-gray-300 mb-3">📊 Аналитика трейдеров</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {(['A', 'B', 'C', 'D'] as const).map(grade => {
+              const count = Array.from(tradersAnalytics.values()).filter(t => t.grade === grade).length
+              const percentage = tradersAnalytics.size > 0 ? (count / tradersAnalytics.size * 100).toFixed(0) : '0'
+              return (
+                <div key={grade} className="text-center">
+                  <div className={`inline-block px-2 py-1 rounded font-bold text-sm ${getGradeBadge(grade)}`}>
+                    {grade}
+                  </div>
+                  <div className="text-white text-lg font-semibold mt-1">{count}</div>
+                  <div className="text-gray-500 text-xs">{percentage}%</div>
+                </div>
+              )
+            })}
+            <div className="text-center">
+              <div className="text-gray-400 text-xs">Всего</div>
+              <div className="text-white text-lg font-semibold">{tradersAnalytics.size}</div>
+              <div className="text-gray-500 text-xs">трейдеров</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Signal Chart */}
       <SignalChart 
@@ -256,9 +335,30 @@ export default function TestTableComponent() {
                             <div className="text-gray-400 text-xs">
                               {record.id?.substring(0, 12) || 'N/A'}...
                             </div>
-                            {/* Status and source info */}
-                            <div className="text-gray-500 text-xs">
-                              {record.source || 'Unknown'} | {record.status || 'N/A'}
+                            {/* Status and source info with analytics */}
+                            <div className="text-gray-500 text-xs flex items-center gap-2">
+                              <span>{record.source || 'Unknown'}</span>
+                              <span>|</span>
+                              <span>{record.status || 'N/A'}</span>
+                              
+                              {/* ✅ НОВОЕ: Trust Index и Grade */}
+                              {(() => {
+                                const analytics = getTraderAnalytics(record.source)
+                                if (analytics) {
+                                  return (
+                                    <>
+                                      <span>|</span>
+                                      <span className={`inline-block px-1 py-0.5 rounded text-xs font-bold ${getGradeBadge(analytics.grade)}`}>
+                                        {analytics.grade}
+                                      </span>
+                                      <span className={`font-mono ${getTrustIndexColor(analytics.trust_index)}`}>
+                                        {formatTrustIndex(analytics.trust_index)}
+                                      </span>
+                                    </>
+                                  )
+                                }
+                                return null
+                              })()}
                             </div>
                           </div>
                         </div>

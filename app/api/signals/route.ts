@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import Redis from 'ioredis'
+
+// Инициализация Supabase клиента
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // Инициализация Redis клиента
 let redis: Redis | null = null
@@ -88,17 +95,6 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol')
     const status = searchParams.get('status')
     
-    if (!redis) {
-      return NextResponse.json({
-        signals: [],
-        count: 0,
-        stats: { total: 0, valid: 0, invalid: 0, processed: 0, pending: 0 },
-        traders: {},
-        timestamp: new Date().toISOString(),
-        error: 'Redis not available'
-      })
-    }
-    
     let signals: (TradingSignal | ProcessedSignal)[] = []
     let stats = {
       total: 0,
@@ -109,7 +105,140 @@ export async function GET(request: NextRequest) {
     }
     
     try {
-      // Получение сигналов в зависимости от типа
+      // Сначала пытаемся получить данные из Supabase
+      if (type === 'new' || type === 'all') {
+        // Получаем сырые сигналы из signals_raw
+        let query = supabase
+          .from('signals_raw')
+          .select(`
+            raw_id,
+            trader_id,
+            posted_at,
+            text,
+            processed,
+            trader_registry!inner(name, source_handle)
+          `)
+          .order('posted_at', { ascending: false })
+          .limit(limit)
+
+        if (trader) {
+          query = query.eq('trader_id', trader)
+        }
+
+        const { data: rawSignals, error: rawError } = await query
+
+        if (rawError) {
+          console.error('Error fetching raw signals:', rawError)
+        } else if (rawSignals) {
+          rawSignals.forEach((raw: any) => {
+            const signal: TradingSignal = {
+              id: raw.raw_id.toString(),
+              channel_id: raw.trader_id,
+              channel_name: raw.trader_registry?.source_handle || '',
+              trader_name: raw.trader_registry?.name || raw.trader_id,
+              message_id: raw.raw_id,
+              timestamp: raw.posted_at,
+              symbol: 'N/A', // Будет определено при парсинге
+              direction: 'N/A',
+              entry_zone: [],
+              tp_levels: [],
+              leverage: undefined,
+              confidence: undefined,
+              original_text: raw.text,
+              validation_status: raw.processed ? 'processed' : 'pending',
+              validation_errors: []
+            }
+
+            // Фильтрация по параметрам
+            if (symbol && signal.symbol !== symbol) return
+            if (status && signal.validation_status !== status) return
+
+            signals.push(signal)
+            stats.total++
+
+            if (signal.validation_status === 'processed') {
+              stats.processed++
+            } else {
+              stats.pending++
+            }
+          })
+        }
+      }
+      
+      if (type === 'processed' || type === 'all') {
+        // Получаем обработанные сигналы из signals_parsed
+        let query = supabase
+          .from('signals_parsed')
+          .select(`
+            signal_id,
+            trader_id,
+            posted_at,
+            symbol,
+            side,
+            entry,
+            tp1,
+            tp2,
+            tp3,
+            sl,
+            confidence,
+            is_valid,
+            trader_registry!inner(name, source_handle)
+          `)
+          .order('posted_at', { ascending: false })
+          .limit(limit)
+
+        if (trader) {
+          query = query.eq('trader_id', trader)
+        }
+
+        if (symbol) {
+          query = query.eq('symbol', symbol)
+        }
+
+        const { data: parsedSignals, error: parsedError } = await query
+
+        if (parsedError) {
+          console.error('Error fetching parsed signals:', parsedError)
+        } else if (parsedSignals) {
+          parsedSignals.forEach((parsed: any) => {
+            const signal: ProcessedSignal = {
+              original_signal_id: parsed.signal_id.toString(),
+              source_channel: parsed.trader_registry?.source_handle || '',
+              trader_name: parsed.trader_registry?.name || parsed.trader_id,
+              timestamp: parsed.posted_at,
+              symbol: parsed.symbol,
+              base_asset: parsed.symbol?.replace('USDT', '') || '',
+              quote_asset: 'USDT',
+              direction: parsed.side === 'BUY' ? 'LONG' : 'SHORT',
+              entry_price: parseFloat(parsed.entry?.toString() || '0'),
+              entry_zone_min: parseFloat(parsed.entry?.toString() || '0') * 0.995,
+              entry_zone_max: parseFloat(parsed.entry?.toString() || '0') * 1.005,
+              tp1_price: parsed.tp1 ? parseFloat(parsed.tp1.toString()) : undefined,
+              tp2_price: parsed.tp2 ? parseFloat(parsed.tp2.toString()) : undefined,
+              tp3_price: parsed.tp3 ? parseFloat(parsed.tp3.toString()) : undefined,
+              sl_price: parsed.sl ? parseFloat(parsed.sl.toString()) : undefined,
+              confidence_score: parsed.confidence ? parseFloat(parsed.confidence.toString()) / 100 : 0,
+              quality_score: parsed.is_valid ? 0.8 : 0.2,
+              processing_status: parsed.is_valid ? 'processed' : 'rejected'
+            }
+
+            signals.push(signal)
+            stats.total++
+            stats.processed++
+            
+            if (parsed.is_valid) {
+              stats.valid++
+            } else {
+              stats.invalid++
+            }
+          })
+        }
+      }
+
+      // Если нет данных в Supabase и есть Redis, пытаемся получить из Redis
+      if (signals.length === 0 && redis) {
+        console.log('No signals from Supabase, trying Redis...')
+        
       if (type === 'new' || type === 'all') {
         const newSignals = await redis.lrange('ghost:signals:new', 0, limit - 1)
         for (const signalJson of newSignals) {
@@ -154,6 +283,7 @@ export async function GET(request: NextRequest) {
             stats.processed++
           } catch (e) {
             console.error('Error parsing processed signal:', e)
+            }
           }
         }
       }
@@ -166,15 +296,15 @@ export async function GET(request: NextRequest) {
       // Ограничение результатов
       signals = signals.slice(0, limit)
       
-    } catch (redisError) {
-      console.error('Redis error:', redisError)
+    } catch (error) {
+      console.error('Error fetching signals:', error)
       return NextResponse.json({
         signals: [],
         count: 0,
         stats: { total: 0, valid: 0, invalid: 0, processed: 0, pending: 0 },
         traders: {},
         timestamp: new Date().toISOString(),
-        error: 'Failed to fetch signals from Redis'
+        error: 'Failed to fetch signals'
       })
     }
     

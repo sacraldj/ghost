@@ -388,52 +388,228 @@ async function getTraderStats(request: NextRequest) {
   const trader_id = searchParams.get('trader_id')
   const period = searchParams.get('period') || '30d' // 7d, 30d, 90d
   
-  if (trader_id) {
-    // Статистика конкретного трейдера
-    const stats = {
-      trader_id,
-      period,
-      signals_count: 45,
-      valid_signals: 42,
-      executed_signals: 38,
-      winrate: 68.4,
-      tp1_rate: 84.2,
-      tp2_rate: 52.6,
-      sl_rate: 31.6,
-      avg_rr: 2.35,
-      avg_duration_to_tp1_min: 125,
-      avg_duration_to_tp2_min: 340,
-      pnl_sim_sum: 289.45,
-      max_drawdown_sim: -45.67,
-      sharpe_like: 1.85,
-      expectancy: 6.82,
-      stability_index: 75.4,
-      symbols_traded: ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'XRPUSDT'],
-      avg_confidence: 87.3
+  try {
+    if (trader_id) {
+      // Статистика конкретного трейдера из реальных данных
+      const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 30
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - periodDays)
+
+      // Получаем сигналы трейдера за период
+      const { data: signals, error: signalsError } = await supabase
+        .from('signals_parsed')
+        .select('*')
+        .eq('trader_id', trader_id)
+        .gte('posted_at', startDate.toISOString())
+        .eq('is_valid', true)
+
+      if (signalsError) {
+        console.error('Error fetching signals:', signalsError)
+        throw signalsError
+      }
+
+      // Получаем результаты сигналов за период
+      const { data: outcomes, error: outcomesError } = await supabase
+        .from('signal_outcomes')
+        .select('*')
+        .eq('trader_id', trader_id)
+        .gte('calculated_at', startDate.toISOString())
+
+      if (outcomesError) {
+        console.error('Error fetching outcomes:', outcomesError)
+        throw outcomesError
+      }
+
+      // Рассчитываем статистику
+      const signalsCount = signals?.length || 0
+      const validSignals = signals?.filter(s => s.is_valid).length || 0
+      const executedSignals = outcomes?.length || 0
+
+      // Подсчет результатов
+      const tp1Count = outcomes?.filter(o => o.final_result === 'TP1_ONLY' || o.final_result === 'TP2_FULL').length || 0
+      const tp2Count = outcomes?.filter(o => o.final_result === 'TP2_FULL').length || 0
+      const slCount = outcomes?.filter(o => o.final_result === 'SL').length || 0
+
+      const winrate = executedSignals > 0 ? ((tp1Count + tp2Count) / executedSignals) * 100 : 0
+      const tp1Rate = executedSignals > 0 ? (tp1Count / executedSignals) * 100 : 0
+      const tp2Rate = executedSignals > 0 ? (tp2Count / executedSignals) * 100 : 0
+      const slRate = executedSignals > 0 ? (slCount / executedSignals) * 100 : 0
+
+      // P&L расчеты
+      const pnlSimSum = outcomes?.reduce((sum, o) => sum + (parseFloat(o.pnl_sim?.toString() || '0')), 0) || 0
+      const maxDrawdownSim = Math.min(...(outcomes?.map(o => parseFloat(o.pnl_sim?.toString() || '0')) || [0]))
+
+      // Временные метрики
+      const avgDurationToTp1 = outcomes?.filter(o => o.duration_to_tp1_min)
+        .reduce((sum, o) => sum + (o.duration_to_tp1_min || 0), 0) / (tp1Count || 1) || 0
+      const avgDurationToTp2 = outcomes?.filter(o => o.duration_to_tp2_min)
+        .reduce((sum, o) => sum + (o.duration_to_tp2_min || 0), 0) / (tp2Count || 1) || 0
+
+      // Средняя уверенность
+      const avgConfidence = signals?.reduce((sum, s) => sum + (parseFloat(s.confidence?.toString() || '0')), 0) / signalsCount || 0
+
+      // Торгуемые символы
+      const symbolsTraded = [...new Set(signals?.map(s => s.symbol) || [])]
+
+      // Risk/Reward и другие метрики
+      const winningTrades = outcomes?.filter(o => parseFloat(o.pnl_sim?.toString() || '0') > 0) || []
+      const losingTrades = outcomes?.filter(o => parseFloat(o.pnl_sim?.toString() || '0') < 0) || []
+      const avgWin = winningTrades.length > 0 ? winningTrades.reduce((sum, t) => sum + parseFloat(t.pnl_sim?.toString() || '0'), 0) / winningTrades.length : 0
+      const avgLoss = losingTrades.length > 0 ? Math.abs(losingTrades.reduce((sum, t) => sum + parseFloat(t.pnl_sim?.toString() || '0'), 0) / losingTrades.length) : 0
+      const avgRr = avgLoss > 0 ? avgWin / avgLoss : 0
+
+      const stats = {
+        trader_id,
+        period,
+        signals_count: signalsCount,
+        valid_signals: validSignals,
+        executed_signals: executedSignals,
+        winrate: Number(winrate.toFixed(1)),
+        tp1_rate: Number(tp1Rate.toFixed(1)),
+        tp2_rate: Number(tp2Rate.toFixed(1)),
+        sl_rate: Number(slRate.toFixed(1)),
+        avg_rr: Number(avgRr.toFixed(2)),
+        avg_duration_to_tp1_min: Math.round(avgDurationToTp1),
+        avg_duration_to_tp2_min: Math.round(avgDurationToTp2),
+        pnl_sim_sum: Number(pnlSimSum.toFixed(2)),
+        max_drawdown_sim: Number(maxDrawdownSim.toFixed(2)),
+        sharpe_like: avgLoss > 0 ? Number((avgWin / avgLoss).toFixed(2)) : 0,
+        expectancy: executedSignals > 0 ? Number((pnlSimSum / executedSignals).toFixed(2)) : 0,
+        stability_index: winrate > 50 ? Math.min(100, winrate + (avgRr * 10)) : winrate,
+        symbols_traded: symbolsTraded,
+        avg_confidence: Number(avgConfidence.toFixed(1))
+      }
+      
+      return NextResponse.json({ stats })
+    } else {
+      // Общая статистика из реальных данных
+      const { data: traders, error: tradersError } = await supabase
+        .from('trader_registry')
+        .select('trader_id, mode, is_active')
+
+      if (tradersError) {
+        console.error('Error fetching traders for overview:', tradersError)
+        throw tradersError
+      }
+
+      const totalTraders = traders?.length || 0
+      const activeTraders = traders?.filter(t => t.is_active).length || 0
+      
+      const modes = {
+        observe: traders?.filter(t => t.mode === 'observe').length || 0,
+        paper: traders?.filter(t => t.mode === 'paper').length || 0,
+        live: traders?.filter(t => t.mode === 'live').length || 0
+      }
+
+      // Получаем данные за сегодня
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const { data: todaySignals, error: todaySignalsError } = await supabase
+        .from('signals_parsed')
+        .select('trader_id')
+        .gte('posted_at', today.toISOString())
+        .eq('is_valid', true)
+
+      const { data: todayOutcomes, error: todayOutcomesError } = await supabase
+        .from('signal_outcomes')
+        .select('pnl_sim, trader_id')
+        .gte('calculated_at', today.toISOString())
+
+      const totalSignalsToday = todaySignals?.length || 0
+      const totalPnlToday = todayOutcomes?.reduce((sum, o) => sum + (parseFloat(o.pnl_sim?.toString() || '0')), 0) || 0
+
+      // Получаем топ исполнителей за последние 30 дней
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+      const { data: recentOutcomes, error: recentError } = await supabase
+        .from('signal_outcomes')
+        .select('trader_id, pnl_sim, final_result')
+        .gte('calculated_at', thirtyDaysAgo.toISOString())
+
+      if (recentError) {
+        console.error('Error fetching recent outcomes:', recentError)
+      }
+
+      // Группируем по трейдерам
+      const traderPerformance = {}
+      recentOutcomes?.forEach(outcome => {
+        const traderId = outcome.trader_id
+        if (!traderPerformance[traderId]) {
+          traderPerformance[traderId] = { pnl: 0, wins: 0, total: 0 }
+        }
+        traderPerformance[traderId].pnl += parseFloat(outcome.pnl_sim?.toString() || '0')
+        traderPerformance[traderId].total += 1
+        if (['TP1_ONLY', 'TP2_FULL'].includes(outcome.final_result)) {
+          traderPerformance[traderId].wins += 1
+        }
+      })
+
+      const topPerformers = Object.entries(traderPerformance)
+        .map(([trader_id, perf]: [string, any]) => ({
+          trader_id,
+          pnl_30d: Number(perf.pnl.toFixed(2)),
+          winrate: perf.total > 0 ? Number(((perf.wins / perf.total) * 100).toFixed(1)) : 0
+        }))
+        .sort((a, b) => b.pnl_30d - a.pnl_30d)
+        .slice(0, 3)
+
+      const avgWinrate = topPerformers.length > 0 
+        ? topPerformers.reduce((sum, t) => sum + t.winrate, 0) / topPerformers.length 
+        : 0
+
+      const overview = {
+        total_traders: totalTraders,
+        active_traders: activeTraders,
+        modes,
+        total_signals_today: totalSignalsToday,
+        total_pnl_today: Number(totalPnlToday.toFixed(2)),
+        avg_winrate: Number(avgWinrate.toFixed(1)),
+        top_performers: topPerformers
+      }
+      
+      return NextResponse.json({ overview })
     }
+  } catch (error) {
+    console.error('Error in getTraderStats:', error)
     
-    return NextResponse.json({ stats })
-  } else {
-    // Общая статистика
-    const overview = {
-      total_traders: 4,
-      active_traders: 3,
-      modes: {
-        observe: 2,
-        paper: 1,
-        live: 1
-      },
-      total_signals_today: 12,
-      total_pnl_today: 156.78,
-      avg_winrate: 63.2,
-      top_performers: [
-        { trader_id: 'tradingpro', pnl_30d: 567.23, winrate: 58.9 },
-        { trader_id: 'slivaeminfo', pnl_30d: 245.80, winrate: 67.5 },
-        { trader_id: 'cryptoexpert', pnl_30d: 189.45, winrate: 72.3 }
-      ]
+    // Fallback к mock данным при ошибке
+    if (trader_id) {
+      const stats = {
+        trader_id,
+        period,
+        signals_count: 0,
+        valid_signals: 0,
+        executed_signals: 0,
+        winrate: 0,
+        tp1_rate: 0,
+        tp2_rate: 0,
+        sl_rate: 0,
+        avg_rr: 0,
+        avg_duration_to_tp1_min: 0,
+        avg_duration_to_tp2_min: 0,
+        pnl_sim_sum: 0,
+        max_drawdown_sim: 0,
+        sharpe_like: 0,
+        expectancy: 0,
+        stability_index: 0,
+        symbols_traded: [],
+        avg_confidence: 0
+      }
+      return NextResponse.json({ stats })
+    } else {
+      const overview = {
+        total_traders: 0,
+        active_traders: 0,
+        modes: { observe: 0, paper: 0, live: 0 },
+        total_signals_today: 0,
+        total_pnl_today: 0,
+        avg_winrate: 0,
+        top_performers: []
+      }
+      return NextResponse.json({ overview })
     }
-    
-    return NextResponse.json({ overview })
   }
 }
 

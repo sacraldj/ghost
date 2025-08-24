@@ -6,14 +6,25 @@ const supabase = createClient(
   process.env.SUPABASE_SECRET_KEY!
 )
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Получаем все записи, сортируем по created_at (более надежно чем posted_ts)
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url)
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const source = searchParams.get('source') // Фильтр по источнику (трейдеру)
+
+    let query = supabase
       .from('v_trades')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50) // Ограничиваем до 50 последних записей для производительности
+      .limit(limit)
+    
+    // Фильтрация по источнику, если указан
+    if (source) {
+      query = query.eq('source', source)
+    }
+
+    // Получаем записи с фильтрацией
+    const { data, error } = await query
 
     if (error) {
       console.error('Supabase error:', error)
@@ -27,9 +38,9 @@ export async function GET() {
       return dateB - dateA // Новые записи сначала
     }) || []
 
-    console.log(`📊 Test Table API: Found ${sortedData.length} records, latest: ${sortedData[0]?.symbol} ${sortedData[0]?.side} (${sortedData[0]?.created_at})`)
+    console.log(`📊 Test Table API: Found ${sortedData.length} records${source ? ` for ${source}` : ''}, latest: ${sortedData[0]?.symbol} ${sortedData[0]?.side} (${sortedData[0]?.created_at})`)
 
-    return NextResponse.json({ data: sortedData })
+    return NextResponse.json({ success: true, data: sortedData })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

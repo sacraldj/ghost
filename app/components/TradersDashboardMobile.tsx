@@ -69,51 +69,8 @@ export default function TradersDashboardMobile({ onTraderClick }: TradersDashboa
       }
     } catch (error) {
       console.error('Error fetching traders:', error)
-      // Fallback demo data for mobile
-      setTraders([
-        {
-          id: 'whales_guide_main',
-          name: 'Whales Guide',
-          avatar: '🐋',
-          channel: '@Whalesguide',
-          totalSignals: 156,
-          winRate: 68.5,
-          roi: 24.8,
-          pnl: 12450.00,
-          avgHoldTime: '4h 32m',
-          lastSignal: '2h ago',
-          status: 'active',
-          performance7d: 8.3,
-          performance30d: 24.8,
-          successfulTrades: 107,
-          totalTrades: 156,
-          maxDrawdown: -8.2,
-          sharpeRatio: 1.85,
-          totalVolume: 245000,
-          followers: 8500
-        },
-        {
-          id: 'crypto_hub_vip',
-          name: 'Crypto Hub VIP',
-          avatar: '💎',
-          channel: '@cryptohubvip',
-          totalSignals: 134,
-          winRate: 72.1,
-          roi: 31.2,
-          pnl: 18750.00,
-          avgHoldTime: '3h 15m',
-          lastSignal: '45m ago',
-          status: 'active',
-          performance7d: 12.1,
-          performance30d: 31.2,
-          successfulTrades: 97,
-          totalTrades: 134,
-          maxDrawdown: -6.8,
-          sharpeRatio: 2.15,
-          totalVolume: 312000,
-          followers: 12500
-        }
-      ])
+      // В случае ошибки показываем пустой список - данные будут получены из реального API
+      setTraders([])
     } finally {
       setLoading(false)
     }

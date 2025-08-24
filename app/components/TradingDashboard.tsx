@@ -184,10 +184,10 @@ export default function TradingDashboard() {
     return (
       <div className="p-6 space-y-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-8 bg-gray-700/50 rounded-xl w-1/4 mb-4"></div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded"></div>
+              <div key={i} className="h-32 bg-gradient-to-br from-gray-800/50 to-gray-700/30 rounded-2xl"></div>
             ))}
           </div>
         </div>
@@ -197,106 +197,109 @@ export default function TradingDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Trading Dashboard</h1>
-        <div className="text-sm text-gray-500">
-          Last update: {lastUpdate.toLocaleTimeString()}
+      {/* Header in Test Table style */}
+      <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl p-4 border border-gray-800/50">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-semibold text-white">💹 Live Trading Overview</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Real-time portfolio performance and active positions
+            </p>
+          </div>
+          <div className="text-xs text-gray-400">
+            🕒 Last update: {lastUpdate.toLocaleTimeString()}
+          </div>
         </div>
       </div>
 
       {/* Live PnL Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Total Live PnL */}
-        <Card className="relative overflow-hidden">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
+        <div className="bg-gradient-to-br from-gray-900/50 to-gray-800/30 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/50 shadow-lg relative overflow-hidden">
+          <div className="pb-2">
+            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
               🔴 LIVE P&L
               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </div>
+          </div>
+          <div>
             <div className={`text-2xl font-bold ${getPnLColor(livePnL.total_unrealized_pnl)}`}>
               {formatCurrency(livePnL.total_unrealized_pnl)}
             </div>
             <div className={`text-sm ${getPnLColor(livePnL.total_unrealized_pnl)}`}>
               {formatPercentage((livePnL.total_unrealized_pnl / livePnL.total_portfolio_value) * 100)}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Today's Realized */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Today Realized
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="bg-gradient-to-br from-gray-900/50 to-gray-800/30 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/50 shadow-lg">
+          <div className="pb-2">
+            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              💰 Today Realized
+            </div>
+          </div>
+          <div>
             <div className={`text-2xl font-bold ${getPnLColor(livePnL.total_realized_pnl_today)}`}>
               {formatCurrency(livePnL.total_realized_pnl_today)}
             </div>
-            <div className="text-sm text-gray-600">
-              Win Rate: {livePnL.win_rate_today.toFixed(1)}%
+            <div className="text-sm text-gray-400">
+              📊 Win Rate: {livePnL.win_rate_today.toFixed(1)}%
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Active Trades */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              Active Trades
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <div className="bg-gradient-to-br from-gray-900/50 to-gray-800/30 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/50 shadow-lg">
+          <div className="pb-2">
+            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              🎯 Active Trades
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white">
               {livePnL.active_trades_count}
             </div>
-            <div className="text-sm text-gray-600">
-              Avg: {livePnL.avg_trade_duration}
+            <div className="text-sm text-gray-400">
+              ⏱️ Avg: {livePnL.avg_trade_duration}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Portfolio Value */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Portfolio
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <div className="bg-gradient-to-br from-gray-900/50 to-gray-800/30 backdrop-blur-sm rounded-2xl p-4 border border-gray-700/50 shadow-lg">
+          <div className="pb-2">
+            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              📈 Portfolio
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white">
               {formatCurrency(livePnL.total_portfolio_value)}
             </div>
-            <div className="text-sm text-gray-600">
-              Total Value
+            <div className="text-sm text-gray-400">
+              💎 Total Value
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Active Trades Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            Active Trades ({activeTrades.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="bg-gradient-to-br from-gray-900/30 to-gray-800/20 backdrop-blur-sm rounded-2xl border border-gray-700/30 shadow-lg">
+        <div className="p-4 border-b border-gray-700/30">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-white">🎯 Active Trades ({activeTrades.length})</h3>
+          </div>
+        </div>
+        <div className="p-4">
           {activeTrades.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No active trades
+            <div className="text-center py-8 text-gray-400">
+              📭 No active trades
             </div>
           ) : (
             <div className="space-y-4">
               {activeTrades.map((trade) => (
-                <div key={trade.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                <div key={trade.id} className="bg-gradient-to-br from-gray-800/50 to-gray-700/30 rounded-xl p-4 border border-gray-700/50 hover:border-gray-600/50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Badge variant={trade.side === 'Buy' ? 'default' : 'secondary'}>
@@ -356,8 +359,8 @@ export default function TradingDashboard() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

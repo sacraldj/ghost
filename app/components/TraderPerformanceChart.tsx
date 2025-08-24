@@ -1,198 +1,225 @@
-"use client"
+'use client'
 
-import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import React, { useState, useEffect } from 'react'
 
-interface TraderPerformanceChartProps {
-  traderId: string
-  data: Array<{
-    date: string
-    pnl: number
-    cumulativePnl: number
-  }>
-  period: '7d' | '30d' | '90d'
+interface TraderAnalytics {
+  trader_id: string
+  trust_index: number
+  winrate: number
+  total_signals: number
+  avg_roi: number
 }
 
-const TraderPerformanceChart: React.FC<TraderPerformanceChartProps> = ({ 
-  traderId, 
-  data, 
-  period 
-}) => {
-  // Генерируем примерные данные для графика P&L
-  const generateMockData = () => {
-    const points = period === '7d' ? 7 : period === '30d' ? 30 : 90
-    const mockData = []
-    let cumulativePnL = 0
+interface PerformanceData {
+  date: string
+  trust_index: number
+  winrate: number
+  signals_count: number
+  roi: number
+}
+
+interface TraderPerformanceChartProps {
+  trader: TraderAnalytics
+}
+
+export default function TraderPerformanceChart({ trader }: TraderPerformanceChartProps) {
+  const [timeframe, setTimeframe] = useState<string>('1month')
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([])
+
+  // Генерируем синтетические данные для демонстрации
+  useEffect(() => {
+    generatePerformanceData()
+  }, [trader, timeframe])
+
+  const generatePerformanceData = () => {
+    const periods = {
+      '1day': 24,
+      '1week': 7, 
+      '1month': 30,
+      '6months': 180,
+      'year': 365,
+      '1year': 365,
+      'all': 365
+    }
+
+    const period = periods[timeframe as keyof typeof periods] || 30
+    const data: PerformanceData[] = []
     
-    for (let i = 0; i < points; i++) {
+    for (let i = period; i >= 0; i--) {
       const date = new Date()
-      date.setDate(date.getDate() - (points - i))
+      date.setDate(date.getDate() - i)
       
-      // Генерируем случайное изменение P&L (-500 до +800)
-      const dailyPnL = (Math.random() - 0.4) * 1300
-      cumulativePnL += dailyPnL
+      // Генерируем реалистичные данные на основе текущих показателей трейдера
+      const baseVariation = (Math.random() - 0.5) * 10
+      const trendFactor = (period - i) / period * 5 // Показываем рост со временем
       
-      mockData.push({
+      data.push({
         date: date.toISOString().split('T')[0],
-        pnl: dailyPnL,
-        cumulativePnl: cumulativePnL
+        trust_index: Math.max(0, Math.min(100, trader.trust_index + baseVariation + trendFactor)),
+        winrate: Math.max(0, Math.min(100, trader.winrate + baseVariation * 0.5)),
+        signals_count: Math.max(0, trader.total_signals + Math.floor(Math.random() * 10)),
+        roi: trader.avg_roi + baseVariation * 2
       })
     }
     
-    return mockData
+    setPerformanceData(data)
   }
 
-  const chartData = data.length > 0 ? data : generateMockData()
-  
-  // Находим min/max для масштабирования
-  const minPnL = Math.min(...chartData.map(d => d.cumulativePnl))
-  const maxPnL = Math.max(...chartData.map(d => d.cumulativePnl))
-  const range = maxPnL - minPnL || 1000
-
-  // Создаём SVG path для линии графика
-  const createPath = (points: Array<{x: number, y: number}>) => {
-    if (points.length < 2) return ''
-    
-    const pathData = points.map((point, index) => {
-      const command = index === 0 ? 'M' : 'L'
-      return `${command} ${point.x} ${point.y}`
-    }).join(' ')
-    
-    return pathData
+  const getChangePercentage = (current: number, previous: number) => {
+    if (previous === 0) return 0
+    return ((current - previous) / previous * 100)
   }
 
-  // Преобразуем данные в координаты SVG
-  const svgPoints = chartData.map((item, index) => ({
-    x: (index / (chartData.length - 1)) * 300, // Ширина графика 300px
-    y: 120 - ((item.cumulativePnl - minPnL) / range) * 100 // Высота графика 100px, отступ 20px
-  }))
+  const currentData = performanceData[performanceData.length - 1]
+  const previousData = performanceData[performanceData.length - 8] || performanceData[0]
 
-  const pathD = createPath(svgPoints)
-  const isProfit = chartData[chartData.length - 1]?.cumulativePnl >= 0
+  const trustChange = currentData && previousData 
+    ? getChangePercentage(currentData.trust_index, previousData.trust_index)
+    : 0
+
+  const winrateChange = currentData && previousData
+    ? getChangePercentage(currentData.winrate, previousData.winrate) 
+    : 0
+
+  // Простой SVG график
+  const chartWidth = 400
+  const chartHeight = 200
+  const padding = 40
+
+  const createPath = (data: PerformanceData[], key: keyof PerformanceData, color: string) => {
+    if (data.length < 2) return null
+    
+    const values = data.map(d => Number(d[key]))
+    const minVal = Math.min(...values)
+    const maxVal = Math.max(...values)
+    const range = maxVal - minVal || 1
+    
+    let path = `M ${padding} ${chartHeight - padding - ((values[0] - minVal) / range) * (chartHeight - 2 * padding)}`
+    
+    for (let i = 1; i < data.length; i++) {
+      const x = padding + (i / (data.length - 1)) * (chartWidth - 2 * padding)
+      const y = chartHeight - padding - ((values[i] - minVal) / range) * (chartHeight - 2 * padding)
+      path += ` L ${x} ${y}`
+    }
+    
+    return (
+      <path
+        key={key as string}
+        d={path}
+        stroke={color}
+        strokeWidth="2"
+        fill="none"
+      />
+    )
+  }
 
   return (
-    <Card className="bg-gray-900 border-gray-800">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center justify-between">
-          <span>График P&L</span>
-          <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-400">
-              {new Date(chartData[0]?.date).toLocaleDateString('ru-RU')} - {new Date().toLocaleDateString('ru-RU')}
+    <div className="bg-gray-700 rounded-lg p-4 mb-4">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-md font-bold text-white">Performance Chart</h3>
+        
+        {/* Временные фреймы */}
+        <div className="flex space-x-1 bg-gray-700 rounded p-1">
+          {['1day', '1week', '1month', '6months', 'year', '1year', 'all'].map(tf => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                timeframe === tf
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-600'
+              }`}
+            >
+              {tf === 'all' ? 'All time' : tf}
+            </button>
+          ))}
+        </div>
             </div>
+
+      {/* Ключевые метрики */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-400">
+            {currentData?.trust_index.toFixed(1) || trader.trust_index.toFixed(1)}
           </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Общий P&L и Суточный P&L */}
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="text-sm text-gray-400">📉 Общий P&L</div>
-              <div className={`text-lg font-bold ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
-                {chartData[chartData.length - 1]?.cumulativePnl.toFixed(2)} USD
+          <div className="text-sm text-gray-400">Trust Index</div>
+          <div className={`text-xs ${trustChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {trustChange >= 0 ? '+' : ''}{trustChange.toFixed(1)}%
               </div>
             </div>
-            <div>
-              <div className="text-sm text-gray-400">📊 Суточный P&L</div>
-              <div className="text-lg font-bold text-green-500">
-                +{Math.abs(chartData[chartData.length - 1]?.pnl || 0).toFixed(2)} USD
+        
+        <div className="text-center">
+          <div className="text-2xl font-bold text-green-400">
+            {currentData?.winrate.toFixed(1) || trader.winrate.toFixed(1)}%
+          </div>
+          <div className="text-sm text-gray-400">Winrate</div>
+          <div className={`text-xs ${winrateChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {winrateChange >= 0 ? '+' : ''}{winrateChange.toFixed(1)}%
+          </div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-2xl font-bold text-yellow-400">
+            {currentData?.roi.toFixed(1) || trader.avg_roi.toFixed(1)}%
+          </div>
+          <div className="text-sm text-gray-400">ROI</div>
+          <div className="text-xs text-gray-500">
+            Average
+          </div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-2xl font-bold text-purple-400">
+            {currentData?.signals_count || trader.total_signals}
+          </div>
+          <div className="text-sm text-gray-400">Signals</div>
+          <div className="text-xs text-gray-500">
+            Total
               </div>
             </div>
           </div>
 
           {/* График */}
-          <div className="relative bg-gray-800 rounded-lg p-4" style={{ height: '140px' }}>
-            <svg width="100%" height="120" className="overflow-visible">
+      <div className="bg-gray-900 rounded-lg p-4">
+        <svg width={chartWidth} height={chartHeight} className="w-full">
               {/* Сетка */}
               <defs>
-                <pattern id="grid" width="30" height="20" patternUnits="userSpaceOnUse">
-                  <path d="M 30 0 L 0 0 0 20" fill="none" stroke="#374151" strokeWidth="0.5" opacity="0.3"/>
+            <pattern id="grid" width="50" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 50 0 L 0 0 0 40" fill="none" stroke="#374151" strokeWidth="1"/>
                 </pattern>
               </defs>
               <rect width="100%" height="100%" fill="url(#grid)" />
               
-              {/* Градиент для заливки */}
-              <defs>
-                <linearGradient id={`gradient-${traderId}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor={isProfit ? "#10b981" : "#ef4444"} stopOpacity="0.3"/>
-                  <stop offset="100%" stopColor={isProfit ? "#10b981" : "#ef4444"} stopOpacity="0.0"/>
-                </linearGradient>
-              </defs>
-              
-              {/* Заливка под графиком */}
-              {pathD && (
-                <path
-                  d={`${pathD} L 300 120 L 0 120 Z`}
-                  fill={`url(#gradient-${traderId})`}
-                />
-              )}
-              
-              {/* Основная линия графика */}
-              {pathD && (
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke={isProfit ? "#10b981" : "#ef4444"}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-              
-              {/* Точки на графике */}
-              {svgPoints.map((point, index) => (
-                <circle
-                  key={index}
-                  cx={point.x}
-                  cy={point.y}
-                  r="3"
-                  fill={isProfit ? "#10b981" : "#ef4444"}
-                  stroke="#1f2937"
-                  strokeWidth="2"
-                />
-              ))}
+          {/* Линии графика */}
+          {performanceData.length > 1 && (
+            <>
+              {createPath(performanceData, 'trust_index', '#3B82F6')}
+              {createPath(performanceData, 'winrate', '#10B981')} 
+              {createPath(performanceData, 'roi', '#F59E0B')}
+            </>
+          )}
+          
+          {/* Оси */}
+          <line x1={padding} y1={padding} x2={padding} y2={chartHeight - padding} stroke="#6B7280" strokeWidth="1"/>
+          <line x1={padding} y1={chartHeight - padding} x2={chartWidth - padding} y2={chartHeight - padding} stroke="#6B7280" strokeWidth="1"/>
             </svg>
             
-            {/* Оси и подписи */}
-            <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-500 px-2">
-              <span>{new Date(chartData[0]?.date).toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' })}</span>
-              <span>{new Date(chartData[Math.floor(chartData.length / 2)]?.date).toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' })}</span>
-              <span>{new Date(chartData[chartData.length - 1]?.date).toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' })}</span>
+        {/* Легенда */}
+        <div className="flex justify-center space-x-6 mt-4">
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-0.5 bg-blue-400"></div>
+            <span className="text-xs text-gray-400">Trust Index</span>
             </div>
-            
-            {/* Y-axis labels */}
-            <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-xs text-gray-500 py-2">
-              <span>{maxPnL.toFixed(0)}</span>
-              <span>0</span>
-              <span>{minPnL.toFixed(0)}</span>
-            </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-0.5 bg-green-400"></div>
+            <span className="text-xs text-gray-400">Winrate</span>
           </div>
-
-          {/* Статистика */}
-          <div className="grid grid-cols-3 gap-4 pt-2 border-t border-gray-700">
-            <div className="text-center">
-              <div className="text-xs text-gray-400">Max Drawdown</div>
-              <div className="text-sm font-medium text-red-400">
-                -{Math.abs(minPnL).toFixed(0)} USD
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-xs text-gray-400">Max Profit</div>
-              <div className="text-sm font-medium text-green-400">
-                +{maxPnL.toFixed(0)} USD
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-xs text-gray-400">Volatility</div>
-              <div className="text-sm font-medium text-yellow-400">
-                {(range / chartData.length).toFixed(0)} USD
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-0.5 bg-yellow-400"></div>
+            <span className="text-xs text-gray-400">ROI</span>
               </div>
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
   )
 }
-
-export default TraderPerformanceChart
