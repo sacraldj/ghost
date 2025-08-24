@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { signIn, getSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -16,7 +16,7 @@ import {
   Loader2
 } from 'lucide-react'
 
-export default function SignInPage() {
+function SignInContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -242,5 +242,47 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-900 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.1)_1px,transparent_0)] bg-[length:50px_50px] opacity-20" />
+      
+      <div className="w-full max-w-md relative">
+        {/* Main Card */}
+        <div className="bg-gradient-to-br from-gray-900/95 to-gray-950/95 backdrop-blur-xl rounded-3xl border border-gray-800/50 shadow-2xl p-8">
+          {/* Logo & Header */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/25">
+              <Activity className="w-8 h-8 text-white animate-pulse" />
+            </div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-gray-300 bg-clip-text text-transparent mb-2">
+              Loading...
+            </h1>
+            <p className="text-gray-400 text-sm">
+              Please wait while we prepare your sign-in page
+            </p>
+          </div>
+
+          {/* Loading Animation */}
+          <div className="space-y-4">
+            <div className="h-14 bg-gray-800/30 rounded-2xl animate-pulse" />
+            <div className="h-14 bg-gray-800/30 rounded-2xl animate-pulse" />
+            <div className="h-14 bg-gray-800/30 rounded-2xl animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SignInContent />
+    </Suspense>
   )
 }
