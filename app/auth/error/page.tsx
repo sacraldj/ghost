@@ -3,8 +3,9 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Activity, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Suspense } from 'react'
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
 
@@ -95,5 +96,35 @@ export default function AuthErrorPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md relative">
+        <div className="bg-gradient-to-br from-gray-900/95 to-gray-950/95 backdrop-blur-xl rounded-3xl border border-gray-800/50 shadow-2xl p-8">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gradient-to-r from-red-600 via-red-700 to-red-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <AlertCircle className="w-8 h-8 text-white animate-pulse" />
+            </div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-red-100 to-gray-300 bg-clip-text text-transparent mb-2">
+              Loading...
+            </h1>
+            <p className="text-gray-400 text-sm">
+              Please wait while we process your request
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AuthErrorContent />
+    </Suspense>
   )
 }
