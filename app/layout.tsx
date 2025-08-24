@@ -1,12 +1,10 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import AuthProvider from './providers/AuthProvider'
 
 export const metadata: Metadata = {
   title: 'GHOST Trading Dashboard',
   description: 'Professional Trading Platform with AI Analysis - Mobile Optimized',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes',
-  themeColor: '#111827',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -26,6 +24,14 @@ export const metadata: Metadata = {
     'msapplication-TileColor': '#111827',
     'msapplication-navbutton-color': '#111827'
   }
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: '#111827'
 }
 
 export default function RootLayout({
