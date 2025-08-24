@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession, signOut } from 'next-auth/react'
 import { 
   LayoutDashboard, 
   Users, 
@@ -14,7 +15,9 @@ import {
   Bell,
   Menu,
   X,
-  TestTube
+  TestTube,
+  LogOut,
+  User
 } from 'lucide-react'
 import SystemStatusIndicator from '@/app/components/SystemStatusIndicator'
 
@@ -38,6 +41,7 @@ interface NavigationSidebarProps {
 export default function NavigationSidebar({ sidebarOpen = false, setSidebarOpen }: NavigationSidebarProps) {
   const pathname = usePathname()
   const [currentTime, setCurrentTime] = useState('')
+  const { data: session } = useSession()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -64,7 +68,7 @@ export default function NavigationSidebar({ sidebarOpen = false, setSidebarOpen 
       document.body.style.overflow = 'unset'
     }
   }, [sidebarOpen])
-
+  
   return (
     <>
       {/* Mobile menu overlay */}
@@ -130,6 +134,46 @@ export default function NavigationSidebar({ sidebarOpen = false, setSidebarOpen 
           <div className="space-y-4">
             <SystemStatusIndicator className="w-full" />
             
+            {/* User Profile */}
+            {session?.user && (
+              <div className="bg-gray-800/50 rounded-2xl p-4 border border-gray-700/50">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+                    {session.user.image ? (
+                      <img 
+                        src={session.user.image} 
+                        alt={session.user.name || 'User'}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {session.user.name || 'User'}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {session.user.email}
+                    </p>
+                    {session.user.role === 'admin' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-900/30 text-yellow-400 border border-yellow-800/50 mt-1">
+                        👑 Admin
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            )}
+            
             {/* Time display */}
             <div className="text-center">
               <div className="text-xs text-gray-500 font-mono">{currentTime}</div>
@@ -172,15 +216,15 @@ export default function NavigationSidebar({ sidebarOpen = false, setSidebarOpen 
           <nav className="flex flex-1 flex-col">
             <ul role="list" className="flex flex-1 flex-col gap-y-3">
               {navigationItems.map((item, index) => {
-                const isActive = pathname === item.path
-                return (
+          const isActive = pathname === item.path
+          return (
                   <li key={item.name} 
                       className={`transform transition-all duration-500 ${
                         sidebarOpen ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
                       }`}
                       style={{ transitionDelay: `${index * 75}ms` }}>
-                    <Link
-                      href={item.path}
+            <Link
+              href={item.path}
                       onClick={() => setSidebarOpen && setSidebarOpen(false)}
                       className={`
                         group flex gap-x-4 rounded-2xl p-4 text-base leading-6 font-medium transition-all duration-300 active:scale-95
@@ -194,19 +238,59 @@ export default function NavigationSidebar({ sidebarOpen = false, setSidebarOpen 
                         isActive ? 'text-blue-400' : 'group-hover:text-blue-300'
                       }`} />
                       <span className="flex-1">{item.name}</span>
-                      {isActive && (
+              {isActive && (
                         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                      )}
-                    </Link>
+              )}
+            </Link>
                   </li>
-                )
-              })}
+          )
+        })}
             </ul>
-          </nav>
-          
-          {/* Mobile System Status */}
+      </nav>
+
+                    {/* Mobile System Status */}
           <div className="space-y-4">
             <SystemStatusIndicator className="w-full" />
+            
+            {/* Mobile User Profile */}
+            {session?.user && (
+              <div className="bg-gray-800/50 rounded-2xl p-4 border border-gray-700/50">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+                    {session.user.image ? (
+                      <img 
+                        src={session.user.image} 
+                        alt={session.user.name || 'User'}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {session.user.name || 'User'}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {session.user.email}
+                    </p>
+                    {session.user.role === 'admin' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-900/30 text-yellow-400 border border-yellow-800/50 mt-1">
+                        👑 Admin
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            )}
             
             {/* Time display */}
             <div className="text-center">
