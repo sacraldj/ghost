@@ -293,10 +293,18 @@ class TelegramListener:
             
             # Для канала Whales Guide - обрабатываем ВСЕ сообщения с контентом
             is_whales_guide = channel_config.trader_id == "whales_guide_main"
+            is_ghost_test = channel_config.trader_id == "ghostsignaltest"
             
             if is_whales_guide:
                 # Для Whales Guide - берем все сообщения с текстом или изображениями
                 is_signal = (message_text and len(message_text) > 10) or has_image
+            elif is_ghost_test:
+                # Для Ghost Signal Test - берем ВСЕ сообщения для тестирования
+                is_signal = (message_text and len(message_text) > 5) or has_image
+                if has_image:
+                    logger.info(f"📝🖼️ Ghost Test message with IMAGE detected: {message_text[:50]}...")
+                else:
+                    logger.info(f"📝 Ghost Test message detected: {message_text[:50]}...")
             else:
                 # Для других каналов - стандартная логика
                 is_text_signal = message_text and self._looks_like_signal(message_text)
@@ -316,12 +324,43 @@ class TelegramListener:
             # Вызываем внешний обработчик если он установлен
             if self.external_message_handler:
                 try:
+                    # Скачиваем изображение если есть и это Ghost Test канал
+                    image_data = None
+                    image_format = "PNG"
+                    
+                    if has_image and is_ghost_test:
+                        try:
+                            logger.info("📸 Downloading image for Ghost Test...")
+                            if event.message.photo:
+                                image_bytes = await self.client.download_media(event.message.photo, file=bytes)
+                                image_format = "JPG"
+                            elif event.message.document:
+                                image_bytes = await self.client.download_media(event.message.document, file=bytes)
+                                # Определяем формат по имени файла
+                                if hasattr(event.message.document, 'file_name') and event.message.document.file_name:
+                                    file_name = event.message.document.file_name.lower()
+                                    if file_name.endswith('.png'):
+                                        image_format = "PNG"
+                                    elif file_name.endswith(('.jpg', '.jpeg')):
+                                        image_format = "JPG"
+                            
+                            if image_bytes and len(image_bytes) > 0:
+                                image_data = image_bytes
+                                logger.info(f"✅ Image downloaded: {len(image_bytes)} bytes, format: {image_format}")
+                            else:
+                                logger.warning("⚠️ Failed to download image data")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Error downloading image for Ghost Test: {e}")
+                    
                     message_data = {
                         "chat_id": chat_id,
                         "message_id": event.message.id,
                         "text": message_text,
                         "timestamp": event.message.date,
                         "has_image": has_image,
+                        "image_data": image_data,  # Данные изображения для Ghost Test
+                        "image_format": image_format,  # Формат изображения
                         "channel_name": channel_config.channel_name,
                         "trader_id": channel_config.trader_id
                     }

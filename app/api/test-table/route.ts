@@ -8,17 +8,28 @@ const supabase = createClient(
 
 export async function GET() {
   try {
+    // Получаем все записи, сортируем по created_at (более надежно чем posted_ts)
     const { data, error } = await supabase
       .from('v_trades')
       .select('*')
-      .order('posted_ts', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(50) // Ограничиваем до 50 последних записей для производительности
 
     if (error) {
       console.error('Supabase error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ data })
+    // Дополнительно сортируем на клиенте для гарантии
+    const sortedData = data?.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0).getTime()
+      const dateB = new Date(b.created_at || 0).getTime()
+      return dateB - dateA // Новые записи сначала
+    }) || []
+
+    console.log(`📊 Test Table API: Found ${sortedData.length} records, latest: ${sortedData[0]?.symbol} ${sortedData[0]?.side} (${sortedData[0]?.created_at})`)
+
+    return NextResponse.json({ data: sortedData })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

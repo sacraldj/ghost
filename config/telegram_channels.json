@@ -29,26 +29,9 @@
       "channel_name": "Ghost Signal Test",
       "trader_id": "ghostsignaltest",
       "is_active": true,
-      "description": "Тестовый канал для парсинга сигналов в v_trades",
-      "keywords_filter": [
-        "shorting",
-        "longing",
-        "entry:",
-        "targets:",
-        "stop-loss:",
-        "short (",
-        "long (",
-        "#",
-        "btc",
-        "eth",
-        "usdt",
-        "buy",
-        "sell"
-      ],
-      "exclude_keywords": [
-        "admin_command",
-        "system_maintenance"
-      ],
+      "description": "Тестовый канал - записывает ВСЕ сообщения в v_trades",
+      "keywords_filter": [],
+      "exclude_keywords": [],
       "source_type": "telegram",
       "parsing_profile": "ghost_test_v1"
     },

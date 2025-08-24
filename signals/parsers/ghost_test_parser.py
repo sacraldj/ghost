@@ -7,7 +7,7 @@ GHOST Test Signal Parser
 import re
 import logging
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from .signal_parser_base import SignalParserBase, ParsedSignal, SignalDirection, calculate_confidence
 import sys
 import os
@@ -15,6 +15,13 @@ import os
 # Добавляем путь для импорта config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config.crypto_symbols_database import get_crypto_symbols_db
+
+# Импортируем image parser если доступен
+try:
+    from .image_parser import ImageSignalParser
+    IMAGE_PARSER_AVAILABLE = True
+except ImportError:
+    IMAGE_PARSER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +33,17 @@ class GhostTestParser(SignalParserBase):
         
         # Инициализируем базу символов
         self.crypto_db = get_crypto_symbols_db()
+        
+        # Инициализируем image parser если доступен
+        self.image_parser = None
+        if IMAGE_PARSER_AVAILABLE:
+            try:
+                self.image_parser = ImageSignalParser()
+                logger.info("✅ Image parser initialized for Ghost Test")
+            except Exception as e:
+                logger.warning(f"⚠️ Image parser initialization failed: {e}")
+        else:
+            logger.info("ℹ️ Image parser not available for Ghost Test")
         
         # Паттерны для распознавания тестовых сигналов (на основе реального формата)
         self.format_patterns = [
@@ -49,14 +67,21 @@ class GhostTestParser(SignalParserBase):
             'testing', 'now', 'crypto'
         ]
     
-    def can_parse(self, text: str) -> bool:
-        """Проверка, подходит ли текст для этого парсера (СТРОГАЯ фильтрация)"""
-        if not text or len(text.strip()) < 10:
+    def can_parse(self, text: str, has_image: bool = False) -> bool:
+        """Проверка, подходит ли текст/изображение для этого парсера"""
+        
+        # Для изображений - принимаем ВСЕ если есть хоть какой-то текст
+        if has_image:
+            logger.info("🖼️ Ghost Test: Detected image with text, accepting for parsing")
+            return True
+            
+        # Для текста - используем обычную логику
+        if not text or len(text.strip()) < 5:  # Понизили минимум с 10 до 5
             return False
             
         text_clean = self.clean_text(text).upper()
         
-        # ОБЯЗАТЕЛЬНЫЕ критерии для сигнала
+        # РАСШИРЕННЫЕ критерии для сигнала (более гибкие)
         has_direction = bool(re.search(r'\b(LONG|SHORT|BUY|SELL|LONGING|SHORTING)\b', text_clean))
         
         # Проверяем наличие символа через новую систему
@@ -65,51 +90,110 @@ class GhostTestParser(SignalParserBase):
         
         has_price = bool(re.search(r'(ENTRY|TARGET|TP|STOP|SL).*\$?[0-9,]+\.?[0-9]*', text_clean, re.IGNORECASE))
         
+        # Дополнительные паттерны для более гибкого парсинга
+        has_crypto_mention = bool(re.search(r'(ЗАПАМПИЛИ|РОСТ|ПАМП|DUMP|MOON|BREAKOUT)', text_clean))
+        has_percentage = bool(re.search(r'\+?\d+%', text_clean))
+        
         # ИСКЛЮЧАЕМ очевидно НЕ сигналы
         exclude_phrases = [
             'ОК', 'ХОРОШО', 'ПОНЯТНО', 'СПАСИБО', 'ДА', 'НЕТ', 
-            'ПРИВЕТ', 'ПОКА', 'КАК ДЕЛА', 'ЧТО ТАМ',
-            'ВСЕ ЛИ ВЕРНО', 'ВНЕСЛОСЬ ЛИ', 'СМОТРИМ ТАБЛИЦУ',
-            'ТЕСТ', 'ПРОВЕРКА', 'АДМИН', 'СЮДА ПИСАТЬ'
+            'ПРИВЕТ', 'ПОКА', 'КАК ДЕЛА', 'ЧТО ТАМ'
         ]
         
         for phrase in exclude_phrases:
-            if phrase in text_clean and len(text_clean) < 50:
+            if phrase in text_clean and len(text_clean) < 30:  # Уменьшили с 50 до 30
                 return False
         
-        # Сигнал должен иметь ВСЕ обязательные элементы
-        is_signal = has_direction and has_symbol and has_price
+        # ГИБКАЯ логика: сигнал если есть ХОТЯ БЫ 2 из критериев
+        criteria_met = sum([
+            has_direction,
+            has_symbol, 
+            has_price,
+            has_crypto_mention,
+            has_percentage
+        ])
         
-        # Дополнительная проверка на минимальную длину для сигналов
-        if is_signal and len(text_clean) < 30:
+        is_signal = criteria_met >= 2 or (has_direction and has_symbol)
+        
+        # Минимальная длина для сигналов
+        if is_signal and len(text_clean) < 15:  # Понизили с 30 до 15
             return False
             
         return is_signal
     
-    def parse_signal(self, text: str, trader_id: str) -> Optional[ParsedSignal]:
-        """Основная функция парсинга тестового сигнала"""
+    def parse_signal(self, text: str, trader_id: str, image_data: Optional[bytes] = None, image_format: str = "PNG") -> Optional[ParsedSignal]:
+        """Основная функция парсинга тестового сигнала (текст + изображения)"""
         try:
-            text_clean = self.clean_text(text)
             timestamp = datetime.now()
             
-            # Извлекаем основные компоненты
+            # Сначала пробуем парсить изображение если есть
+            image_signal_data = None
+            if image_data and self.image_parser:
+                try:
+                    logger.info("🖼️ Attempting to parse image signal...")
+                    # Для совместимости пока делаем синхронно - создаем простую заглушку
+                    image_signal_data = self._parse_image_signal_sync(image_data, image_format, text)
+                    if image_signal_data:
+                        logger.info("✅ Image signal data extracted successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Image parsing failed: {e}")
+            
+            # Парсим текстовую часть
+            text_clean = self.clean_text(text)
+            
+            # Извлекаем основные компоненты из текста
             symbol = self.extract_symbol_ghost(text_clean)
-            if not symbol:
-                logger.warning("Could not extract symbol from Ghost test text")
-                return None
-            
             direction = self.extract_direction_ghost(text_clean)
-            if not direction:
-                logger.warning("Could not extract direction from Ghost test text")
-                return None
-            
-            # Извлекаем цены
             entry_prices = self.extract_entry_prices_ghost(text_clean)
             targets = self.extract_targets_ghost(text_clean)
             stop_loss = self.extract_stop_loss_ghost(text_clean)
             leverage = self.extract_leverage_ghost(text_clean)
             
-            # Проверяем логику сигнала перед созданием
+            # Если из текста ничего не извлекли - пробуем взять из изображения
+            if image_signal_data:
+                symbol = symbol or image_signal_data.get('symbol')
+                if not direction and image_signal_data.get('direction'):
+                    direction_str = image_signal_data.get('direction', '').upper()
+                    if 'LONG' in direction_str or 'BUY' in direction_str:
+                        direction = SignalDirection.LONG
+                    elif 'SHORT' in direction_str or 'SELL' in direction_str:
+                        direction = SignalDirection.SHORT
+                
+                entry_prices = entry_prices or image_signal_data.get('entry_prices', [])
+                targets = targets or image_signal_data.get('targets', [])
+                stop_loss = stop_loss or image_signal_data.get('stop_loss')
+                leverage = leverage or image_signal_data.get('leverage', '10x')
+            
+            # Если все еще нет символа или направления - создаем "универсальный" сигнал
+            if not symbol:
+                # Пробуем найти любое упоминание криптовалюты
+                crypto_mentions = re.findall(r'#?([A-Z]{2,10})', text_clean.upper())
+                symbol = crypto_mentions[0] if crypto_mentions else "TEST"
+                if symbol != "TEST":
+                    symbol = self.crypto_db.normalize_symbol(symbol) or f"{symbol}USDT"
+                    
+            if not direction:
+                # Определяем направление по ключевым словам
+                if re.search(r'(ЗАПАМПИЛИ|РОСТ|UP|\+\d+%|PUMP|MOON)', text_clean.upper()):
+                    direction = SignalDirection.LONG
+                elif re.search(r'(DUMP|DOWN|FALL|SHORT)', text_clean.upper()):
+                    direction = SignalDirection.SHORT
+                else:
+                    direction = SignalDirection.LONG  # По умолчанию
+            
+            # Если нет цен - создаем тестовые
+            if not entry_prices and not targets and not stop_loss:
+                logger.info("📝 Creating test signal with mock prices for Ghost Test")
+                entry_prices = [100.0]  # Тестовая цена входа
+                targets = [110.0, 120.0]  # Тестовые цели
+                stop_loss = 90.0  # Тестовый стоп-лосс
+                
+                # Корректируем для SHORT
+                if direction == SignalDirection.SHORT:
+                    targets = [90.0, 80.0]
+                    stop_loss = 110.0
+            
+            # Проверяем логику сигнала
             is_valid, validation_errors = self._validate_signal_logic(direction, entry_prices, targets, stop_loss)
             
             # Создаем объект сигнала
@@ -136,17 +220,64 @@ class GhostTestParser(SignalParserBase):
             signal.is_valid = is_valid
             signal.validation_errors = validation_errors
             
-            if not is_valid:
-                logger.error(f"❌ INVALID_SIGNAL | {symbol} {direction.value} | {'; '.join(validation_errors)}")
-                logger.warning(f"📊 Entry: {entry_prices}, Targets: {targets}, Stop: {stop_loss}")
-            else:
-                logger.info(f"✅ VALID_SIGNAL | {symbol} {direction.value}")
+            # Помечаем если был использован image parser
+            if image_signal_data:
+                signal.parse_method = "text_image_hybrid"
             
-            logger.info(f"✅ Ghost test signal parsed: {symbol} {direction.value}")
+            signal_type = "IMAGE+TEXT" if image_data else "TEXT"
+            if not is_valid:
+                logger.error(f"❌ INVALID_SIGNAL ({signal_type}) | {symbol} {direction.value} | {'; '.join(validation_errors)}")
+            else:
+                logger.info(f"✅ VALID_SIGNAL ({signal_type}) | {symbol} {direction.value}")
+            
+            logger.info(f"✅ Ghost test signal parsed: {symbol} {direction.value} ({signal_type})")
             return signal
             
         except Exception as e:
             logger.error(f"❌ Error parsing Ghost test signal: {e}")
+            return None
+    
+    def _parse_image_signal_sync(self, image_data: bytes, image_format: str, caption: str = "") -> Optional[Dict[str, Any]]:
+        """Синхронный парсинг изображения (базовая версия)"""
+        if not self.image_parser:
+            return None
+            
+        try:
+            # Простая заглушка для изображений - извлекаем базовую информацию
+            # В будущем можно добавить OCR или другие методы
+            result = {
+                'symbol': None,
+                'direction': None,  
+                'entry_prices': [],
+                'targets': [],
+                'stop_loss': None,
+                'leverage': None,
+                'confidence': 0.5,
+                'parse_method': 'image_basic',
+                'has_image': True
+            }
+            
+            # Если есть caption (подпись к изображению) - пробуем извлечь из неё данные
+            if caption and len(caption) > 10:
+                caption_upper = caption.upper()
+                
+                # Ищем символ в подписи
+                crypto_mentions = re.findall(r'#?([A-Z]{2,10})', caption_upper)
+                if crypto_mentions:
+                    result['symbol'] = crypto_mentions[0]
+                
+                # Ищем направление в подписи
+                if re.search(r'\b(LONG|BUY|LONGING)\b', caption_upper):
+                    result['direction'] = 'LONG'
+                elif re.search(r'\b(SHORT|SELL|SHORTING)\b', caption_upper):
+                    result['direction'] = 'SHORT'
+                
+                logger.info(f"📝 Extracted from image caption: symbol={result.get('symbol')}, direction={result.get('direction')}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error in sync image parsing: {e}")
             return None
     
     def extract_symbol_ghost(self, text: str) -> Optional[str]:

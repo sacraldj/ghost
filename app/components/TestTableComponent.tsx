@@ -82,7 +82,7 @@ export default function TestTableComponent() {
   const [selectedSignalForChart, setSelectedSignalForChart] = useState<string | null>(null)
   const [savedRecords, setSavedRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAutoRefresh, setIsAutoRefresh] = useState(true)
+  // Auto-refresh removed - using real-time updates
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -91,16 +91,14 @@ export default function TestTableComponent() {
     fetchSavedRecords()
   }, [])
 
-  // Автообновление каждые 30 секунд
+  // Real-time updates every 8 seconds
   useEffect(() => {
-    if (!isAutoRefresh) return
-
     const interval = setInterval(() => {
       fetchSavedRecords(true) // true = silent refresh
-    }, 30000) // 30 секунд
+    }, 8000) // Faster updates for real-time experience
 
     return () => clearInterval(interval)
-  }, [isAutoRefresh])
+  }, [])
 
   const fetchSavedRecords = async (silent: boolean = false) => {
     try {
@@ -183,30 +181,7 @@ export default function TestTableComponent() {
           <div className="flex items-center gap-3">
             {/* Кнопки управления обновлением */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleManualRefresh}
-                disabled={loading || refreshing}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                <div className={`w-4 h-4 ${(loading || refreshing) ? 'animate-spin' : ''}`}>
-                  🔄
-                </div>
-                Обновить
-              </button>
-              
-              <button
-                onClick={() => setIsAutoRefresh(!isAutoRefresh)}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  isAutoRefresh 
-                    ? 'bg-green-600 hover:bg-green-700 text-white' 
-                    : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
-                }`}
-              >
-                <div className="w-4 h-4">
-                  {isAutoRefresh ? '⏰' : '⏸️'}
-                </div>
-                {isAutoRefresh ? 'Авто (30с)' : 'Выкл'}
-              </button>
+              {/* Auto-refresh button removed - using real-time chart updates */}
             </div>
 
             {/* График индикатор */}
@@ -281,6 +256,10 @@ export default function TestTableComponent() {
                             <div className="text-gray-400 text-xs">
                               {record.id?.substring(0, 12) || 'N/A'}...
                             </div>
+                            {/* Status and source info */}
+                            <div className="text-gray-500 text-xs">
+                              {record.source || 'Unknown'} | {record.status || 'N/A'}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -293,13 +272,17 @@ export default function TestTableComponent() {
                             {record.side || 'N/A'}
                           </div>
                             
-                            {/* Status indicator */}
+                            {/* Status indicator with improved validation logic */}
                             <div className={`px-2 py-1 rounded text-xs font-medium text-center ${
-                              record.status === 'cancelled' || record.was_fillable === 0
+                              // Улучшенная логика валидности
+                              record.status === 'sim_failed' || record.status === 'cancelled' || record.was_fillable === 0 || record.status === 'sim_skipped'
                                 ? 'bg-red-900/30 text-red-400 border border-red-400/20' 
                                 : 'bg-green-900/30 text-green-400 border border-green-400/20'
                             }`}>
-                              {record.status === 'cancelled' || record.was_fillable === 0 ? '❌ INVALID' : '✅ VALID'}
+                              {record.status === 'sim_failed' || record.status === 'cancelled' || record.was_fillable === 0 || record.status === 'sim_skipped' 
+                                ? '❌ INVALID' 
+                                : '✅ VALID'
+                              }
                             </div>
                             
                             <div className="text-gray-500 text-xs">
@@ -408,22 +391,22 @@ export default function TestTableComponent() {
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-yellow-400">
-            {savedRecords.filter(r => r.side === 'LONG').length}
+            {savedRecords.filter(r => r.source === 'ghostsignaltest').length}
           </div>
-          <div className="text-xs text-gray-400">Long Trades</div>
+          <div className="text-xs text-gray-400">Ghost Test</div>
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
           <div className="text-2xl font-bold text-purple-400">
-            {selectedRecord ? '1' : '0'}
+            {savedRecords.filter(r => r.status === 'sim_open').length}
           </div>
-          <div className="text-xs text-gray-400">Selected</div>
+          <div className="text-xs text-gray-400">Valid Signals</div>
         </div>
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-4 border border-gray-800/50">
-          <div className="text-2xl font-bold text-cyan-400">
-            {isAutoRefresh ? '⏰' : '⏸️'}
+          <div className="text-2xl font-bold text-green-400">
+            ⚡
           </div>
           <div className="text-xs text-gray-400">
-            {isAutoRefresh ? 'Авто обновление' : 'Ручное обновление'}
+            Real-time Updates
           </div>
         </div>
       </div>

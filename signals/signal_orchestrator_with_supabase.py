@@ -159,7 +159,7 @@ class SignalOrchestratorWithSupabase:
                 ("-1001288385100", "whales_guide_main", "@whalesguide"),
                 ("-1001915101334", "2trade_premium", "@slivaeminfo"), 
                 ("-1001263635145", "cryptoattack24", "@cryptoattack24"),
-                ("-1002974041293", "ghostsignaltest", "@ghostsignaltest")  # Тестовый канал для v_trades
+                ("2974041293", "ghostsignaltest", "@ghostsignaltest")  # Исправленный ID без префикса -100
             ]
             
             for channel_id, trader_id, username in channels:
@@ -197,11 +197,23 @@ class SignalOrchestratorWithSupabase:
         try:
             text = message_data.get("text", "")
             trader_id = message_data.get("trader_id", "unknown")
+            has_image = message_data.get("has_image", False)
+            image_data = message_data.get("image_data")
+            image_format = message_data.get("image_format", "PNG")
             
-            # Обрабатываем через наши парсеры
-            result = await self.process_raw_signal(text, trader_id, trader_id)
+            # Обрабатываем через наши парсеры (с поддержкой изображений для Ghost Test)
+            result = await self.process_raw_signal(
+                text, 
+                trader_id, 
+                trader_id, 
+                image_data=image_data if trader_id == "ghostsignaltest" else None,
+                image_format=image_format if trader_id == "ghostsignaltest" else "PNG"
+            )
             if result:
-                logger.info(f"✅ Processed live signal: {result.symbol}")
+                if has_image:
+                    logger.info(f"✅ Processed live signal with IMAGE: {result.symbol} ({trader_id})")
+                else:
+                    logger.info(f"✅ Processed live signal: {result.symbol} ({trader_id})")
                 
         except Exception as e:
             logger.error(f"❌ Error handling Telegram message: {e}")
@@ -224,7 +236,7 @@ class SignalOrchestratorWithSupabase:
             logger.error(f"❌ Failed to initialize Supabase: {e}")
             return None
     
-    async def process_raw_signal(self, raw_text: str, trader_id: str, source_hint: str = None) -> Optional[ParsedSignal]:
+    async def process_raw_signal(self, raw_text: str, trader_id: str, source_hint: str = None, image_data: Optional[bytes] = None, image_format: str = "PNG") -> Optional[ParsedSignal]:
         """Обработка сырого сигнала со всеми парсерами и сохранением в Supabase"""
         try:
             self.stats['signals_processed'] += 1
@@ -270,7 +282,16 @@ class SignalOrchestratorWithSupabase:
                 for parser_name in priority_order:
                     if parser_name in self.parsers:
                         parser = self.parsers[parser_name]
-                        if parser.can_parse(raw_text):
+                        # Для Ghost Test передаем информацию об изображении в can_parse
+                        if parser_name == "ghostsignaltest" and hasattr(parser, 'can_parse'):
+                            try:
+                                can_parse_result = parser.can_parse(raw_text, has_image=bool(image_data))
+                            except TypeError:
+                                can_parse_result = parser.can_parse(raw_text)
+                        else:
+                            can_parse_result = parser.can_parse(raw_text)
+                            
+                        if can_parse_result:
                             best_parser = parser
                             best_parser_name = parser_name
                             break
@@ -278,13 +299,27 @@ class SignalOrchestratorWithSupabase:
                 # Если приоритетные не сработали, пробуем остальные
                 if not best_parser:
                     for parser_name, parser in self.parsers.items():
-                        if parser_name not in priority_order and parser.can_parse(raw_text):
-                            best_parser = parser
-                            best_parser_name = parser_name
-                            break
+                        if parser_name not in priority_order:
+                            # Для Ghost Test передаем информацию об изображении в can_parse
+                            if parser_name == "ghostsignaltest" and hasattr(parser, 'can_parse'):
+                                try:
+                                    can_parse_result = parser.can_parse(raw_text, has_image=bool(image_data))
+                                except TypeError:
+                                    can_parse_result = parser.can_parse(raw_text)
+                            else:
+                                can_parse_result = parser.can_parse(raw_text)
+                                
+                            if can_parse_result:
+                                best_parser = parser
+                                best_parser_name = parser_name
+                                break
             
             # Если ни один специализированный парсер не сработал, пробуем fallback
             if not best_parser:
+                # Создаем fallback парсер если его нет
+                if not hasattr(self, 'fallback_parser'):
+                    self.fallback_parser = UniversalFallbackParser()
+                    
                 logger.info("🤖 Пробуем универсальный fallback парсер...")
                 if self.fallback_parser.can_parse(raw_text):
                     signal = self.fallback_parser.parse_signal(raw_text, trader_id)
@@ -314,8 +349,19 @@ class SignalOrchestratorWithSupabase:
                 self.stats['signals_failed'] += 1
                 return None
             
-            # Парсим сигнал
-            signal = best_parser.parse_signal(raw_text, trader_id)
+            # Парсим сигнал (с поддержкой изображений для Ghost Test)
+            if trader_id == "ghostsignaltest" and hasattr(best_parser, 'parse_signal') and image_data:
+                # Для Ghost Test Parser передаем image_data
+                try:
+                    signal = best_parser.parse_signal(raw_text, trader_id, image_data=image_data, image_format=image_format)
+                    logger.info("🖼️ Used Ghost Test Parser with image support")
+                except TypeError:
+                    # Fallback если метод не поддерживает image_data
+                    signal = best_parser.parse_signal(raw_text, trader_id)
+                    logger.warning("⚠️ Ghost Test Parser doesn't support image_data, using text only")
+            else:
+                # Обычный вызов для всех остальных парсеров
+                signal = best_parser.parse_signal(raw_text, trader_id)
             
             if not signal:
                 logger.warning(f"⚠️ Failed to parse signal with {best_parser_name}")
@@ -421,7 +467,8 @@ class SignalOrchestratorWithSupabase:
                 # Метаданные
                 'parse_version': 'v1.0',
                 'is_valid': getattr(signal, 'is_valid', True),
-                'validation_errors': getattr(signal, 'parse_errors', None),
+                # Убираем validation_errors пока колонка не добавлена в БД
+                # 'validation_errors': getattr(signal, 'parse_errors', None),
                 
                 # Генерируем уникальный checksum для Prisma схемы (максимум 64 символа)
                 'checksum': f"{signal.trader_id[:10]}_{signal.symbol[:10]}_{int(datetime.now().timestamp())}_{abs(hash(raw_text)) % 100000}"
@@ -558,7 +605,7 @@ class SignalOrchestratorWithSupabase:
                 
                 # Статус
                 'was_fillable': getattr(signal, 'is_valid', True),  # Только валидные сигналы fillable
-                'status': 'cancelled' if not getattr(signal, 'is_valid', True) else 'sim_open',  # Невалидные помечаем как cancelled
+                'status': 'sim_failed' if not getattr(signal, 'is_valid', True) else 'sim_open',  # Невалидные помечаем как sim_failed
                 
                 # Временные метки
                 'created_at': current_timestamp.isoformat(),
