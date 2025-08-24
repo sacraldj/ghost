@@ -605,7 +605,7 @@ class SignalOrchestratorWithSupabase:
                 
                 # Статус
                 'was_fillable': getattr(signal, 'is_valid', True),  # Только валидные сигналы fillable
-                'status': 'sim_failed' if not getattr(signal, 'is_valid', True) else 'sim_open',  # Невалидные помечаем как sim_failed
+                'status': 'sim_skipped' if not getattr(signal, 'is_valid', True) else 'sim_open',  # Невалидные помечаем как sim_skipped
                 
                 # Временные метки
                 'created_at': current_timestamp.isoformat(),

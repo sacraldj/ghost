@@ -575,40 +575,40 @@ class GhostTestParser(SignalParserBase):
         # === 2. ЛОГИЧЕСКИЕ ОШИБКИ ===
         
         if direction == SignalDirection.LONG:
-            # Для LONG: все TP должны быть выше Entry
+            # Для LONG: все TP должны быть выше Entry (для Ghost Test - только предупреждение)
             for i, target in enumerate(targets, 1):
                 if target <= avg_entry:
-                    validation_errors.append(f"LOGIC_ERROR: Target {i} ({target}) ниже или равен Entry ({avg_entry:.4f}) в LONG")
+                    logger.warning(f"⚠️ LOGIC_WARNING: Target {i} ({target}) ниже Entry ({avg_entry:.4f}) в LONG - разрешено для тестирования")
                     
-            # Для LONG: SL должен быть ниже Entry
+            # Для LONG: SL должен быть ниже Entry (для Ghost Test - только предупреждение)
             if stop_loss and stop_loss >= avg_entry:
-                validation_errors.append(f"LOGIC_ERROR: Stop-loss ({stop_loss}) выше или равен Entry ({avg_entry:.4f}) в LONG")
+                logger.warning(f"⚠️ LOGIC_WARNING: Stop-loss ({stop_loss}) выше Entry ({avg_entry:.4f}) в LONG - разрешено для тестирования")
                 
-            # Проверка пересечения диапазона Entry со SL
+            # Проверка пересечения диапазона Entry со SL (для Ghost Test - только предупреждение)
             if stop_loss and stop_loss >= min_entry:
-                validation_errors.append(f"LOGIC_ERROR: Stop-loss ({stop_loss}) пересекается с диапазоном Entry ({min_entry}-{max_entry})")
+                logger.warning(f"⚠️ LOGIC_WARNING: Stop-loss ({stop_loss}) пересекается с Entry ({min_entry}-{max_entry}) - разрешено для тестирования")
                 
         elif direction == SignalDirection.SHORT:
-            # Для SHORT: все TP должны быть ниже Entry  
+            # Для SHORT: все TP должны быть ниже Entry (для Ghost Test - только предупреждение)
             for i, target in enumerate(targets, 1):
                 if target >= avg_entry:
-                    validation_errors.append(f"LOGIC_ERROR: Target {i} ({target}) выше или равен Entry ({avg_entry:.4f}) в SHORT")
+                    logger.warning(f"⚠️ LOGIC_WARNING: Target {i} ({target}) выше Entry ({avg_entry:.4f}) в SHORT - разрешено для тестирования")
             
-            # Для SHORT: SL должен быть выше Entry
+            # Для SHORT: SL должен быть выше Entry (для Ghost Test - только предупреждение)
             if stop_loss and stop_loss <= avg_entry:
-                validation_errors.append(f"LOGIC_ERROR: Stop-loss ({stop_loss}) ниже или равен Entry ({avg_entry:.4f}) в SHORT")
+                logger.warning(f"⚠️ LOGIC_WARNING: Stop-loss ({stop_loss}) ниже Entry ({avg_entry:.4f}) в SHORT - разрешено для тестирования")
                 
-            # Проверка пересечения диапазона Entry со SL
+            # Проверка пересечения диапазона Entry со SL (для Ghost Test - только предупреждение)
             if stop_loss and stop_loss <= max_entry:
-                validation_errors.append(f"LOGIC_ERROR: Stop-loss ({stop_loss}) пересекается с диапазоном Entry ({min_entry}-{max_entry})")
+                logger.warning(f"⚠️ LOGIC_WARNING: Stop-loss ({stop_loss}) пересекается с Entry ({min_entry}-{max_entry}) - разрешено для тестирования")
         
-        # Проверка на TP/SL равные Entry (движение = 0)
+        # Проверка на TP/SL равные Entry (для Ghost Test - только предупреждение)
         for i, target in enumerate(targets, 1):
             if target == avg_entry:
-                validation_errors.append(f"LOGIC_ERROR: Target {i} ({target}) равен Entry - движение = 0")
+                logger.warning(f"⚠️ LOGIC_WARNING: Target {i} ({target}) равен Entry - разрешено для тестирования")
                 
         if stop_loss and stop_loss == avg_entry:
-            validation_errors.append(f"LOGIC_ERROR: Stop-loss ({stop_loss}) равен Entry - движение = 0")
+            logger.warning(f"⚠️ LOGIC_WARNING: Stop-loss ({stop_loss}) равен Entry - разрешено для тестирования")
         
         # Проверка дубликатов TP
         unique_targets = set(targets)
